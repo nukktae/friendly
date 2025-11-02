@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "mobileprogram",
+    "slug": "mobileprogram",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "mobileprogram",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mobileprogram.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Allow access to camera to scan your schedule",
+        "NSPhotoLibraryUsageDescription": "Allow access to photos to upload your schedule",
+        "NSMicrophoneUsageDescription": "Allow microphone access for voice commands"
+      }
+    },
+    "android": {
+      "package": "com.mobileprogram.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["CAMERA", "RECORD_AUDIO", "READ_EXTERNAL_STORAGE"]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      "@react-native-google-signin/google-signin"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "GOOGLE_CLIENT_ID": "138346490852-f86gp9smc826j784lphcf5do6b09kbis.apps.googleusercontent.com",
+      "GOOGLE_WEB_CLIENT_ID": "138346490852-blj2odpblp3e29mv0vgtc8ekl5t9i2fn.apps.googleusercontent.com",
+      "GOOGLE_REDIRECT_URI": "http://localhost:8081",
+      "FIREBASE_API_KEY": "AIzaSyDWmjPrqBmd2sJXWBuYlC3GieTYzwiAWGI",
+      "FIREBASE_AUTH_DOMAIN": "friendly-34f75.firebaseapp.com",
+      "FIREBASE_PROJECT_ID": "friendly-34f75",
+      "FIREBASE_STORAGE_BUCKET": "friendly-34f75.firebasestorage.app",
+      "FIREBASE_MESSAGING_SENDER_ID": "411686453883",
+      "FIREBASE_APP_ID": "1:411686453883:web:1dfc5b794b28300f2e18de",
+      "FIREBASE_MEASUREMENT_ID": "G-6EKT489GME",
+      "KOREAN_GOV_API_KEY": "20b99b934fc597f4c8ac1d11e3d9a5159dc3c6f46a12bbe9699f4308c689e2cd"
+    }
+  }
+}

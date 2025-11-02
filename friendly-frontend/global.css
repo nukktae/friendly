@@ -1,0 +1,138 @@
+/* Fresh Market App Styles */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS Variables for Design System */
+:root {
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  
+  --color-green-50: #f0fdf4;
+  --color-green-100: #dcfce7;
+  --color-green-200: #bbf7d0;
+  --color-green-300: #86efac;
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  --color-green-700: #15803d;
+  --color-green-800: #166534;
+  --color-green-900: #14532d;
+  
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  
+  --color-yellow-50: #fefce8;
+  --color-yellow-100: #fef3c7;
+  --color-yellow-200: #fde68a;
+  --color-yellow-300: #fcd34d;
+  --color-yellow-400: #fbbf24;
+  --color-yellow-500: #f59e0b;
+  --color-yellow-600: #d97706;
+  
+  --color-red-50: #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-300: #fca5a5;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  
+  --color-white: #ffffff;
+  --color-black: #000000;
+}
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Override Tailwind with custom color system */
+.bg-gray-50 { background-color: var(--color-gray-50) !important; }
+.bg-gray-100 { background-color: var(--color-gray-100) !important; }
+.bg-gray-200 { background-color: var(--color-gray-200) !important; }
+.bg-white { background-color: var(--color-white) !important; }
+.bg-green-50 { background-color: var(--color-green-50) !important; }
+.bg-green-100 { background-color: var(--color-green-100) !important; }
+.bg-green-500 { background-color: var(--color-green-500) !important; }
+.bg-green-600 { background-color: var(--color-green-600) !important; }
+.bg-blue-50 { background-color: var(--color-blue-50) !important; }
+.bg-blue-600 { background-color: var(--color-blue-600) !important; }
+.bg-yellow-50 { background-color: var(--color-yellow-50) !important; }
+.bg-yellow-600 { background-color: var(--color-yellow-600) !important; }
+.bg-red-50 { background-color: var(--color-red-50) !important; }
+.bg-black { background-color: var(--color-black) !important; }
+
+.text-gray-400 { color: var(--color-gray-400) !important; }
+.text-gray-500 { color: var(--color-gray-500) !important; }
+.text-gray-600 { color: var(--color-gray-600) !important; }
+.text-gray-700 { color: var(--color-gray-700) !important; }
+.text-gray-900 { color: var(--color-gray-900) !important; }
+.text-white { color: var(--color-white) !important; }
+.text-green-600 { color: var(--color-green-600) !important; }
+.text-green-500 { color: var(--color-green-500) !important; }
+.text-blue-600 { color: var(--color-blue-600) !important; }
+.text-yellow-600 { color: var(--color-yellow-600) !important; }
+.text-red-500 { color: var(--color-red-500) !important; }
+.text-red-600 { color: var(--color-red-600) !important; }
+
+.border-gray-100 { border-color: var(--color-gray-100) !important; }
+.border-gray-200 { border-color: var(--color-gray-200) !important; }
+.border-gray-300 { border-color: var(--color-gray-300) !important; }
+.border-green-600 { border-color: var(--color-green-600) !important; }
+.border-red-300 { border-color: var(--color-red-300) !important; }
+.border-black { border-color: var(--color-black) !important; }
+
+.hover\:bg-green-600:hover { background-color: var(--color-green-600) !important; }
+.hover\:bg-gray-50:hover { background-color: var(--color-gray-50) !important; }
+.hover\:bg-gray-100:hover { background-color: var(--color-gray-100) !important; }
+.hover\:text-green-600:hover { color: var(--color-green-600) !important; }
+.hover\:text-red-500:hover { color: var(--color-red-500) !important; }
+.hover\:text-blue-500:hover { color: var(--color-blue-500) !important; }
+
+.fill-red-500 { fill: var(--color-red-500) !important; }
+
+/* Custom animations */
+@keyframes animate-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-in {
+  animation: animate-in 0.2s ease-out;
+}
+
+.zoom-in-95 {
+  animation: animate-in 0.2s ease-out;
+}
+
+.duration-200 {
+  animation-duration: 0.2s;
+}
