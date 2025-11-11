@@ -1,6 +1,10 @@
 const admin = require('./firebaseAdmin');
 const { getUserProfile, createUserProfile } = require('./firestoreService');
-const fetch = require('node-fetch');
+// Use built-in fetch (Node 18+) or fallback to node-fetch
+const fetch = globalThis.fetch || (async (...args) => {
+  const { default: fetchModule } = await import('node-fetch');
+  return fetchModule(...args);
+});
 
 function getAuth() {
   if (!admin) {
