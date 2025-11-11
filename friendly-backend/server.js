@@ -8,7 +8,6 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
-// Routessk-proj-DbiXECHpl8C8AUtLQ-DDd_gnlCgG7aWvjeyvcudMumOTNaepE2VQAG4cDjr84Uw5ZXhu8Eyho5T3BlbkFJF4L9zOBhzWoXhQ56NEBbIUFMobD4njaNg55OrK8POocZ_LDAYOQzmdoyaQz4kokrf08QaSeFYA
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/users", require("./routes/users"));
 app.use("/api/schedule", require("./routes/schedules"));
