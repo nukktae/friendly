@@ -5,10 +5,17 @@ function getDb() {
   if (!admin) {
     throw new Error('Firebase Admin SDK not initialized. Set FIREBASE_SERVICE_ACCOUNT_JSON env var.');
   }
-  if (!db) {
-    db = admin.firestore();
+  try {
+    if (!db) {
+      db = admin.firestore();
+    }
+    return db;
+  } catch (error) {
+    if (error.message && error.message.includes('Cannot read properties of null')) {
+      throw new Error('Firebase Admin SDK not initialized. Set FIREBASE_SERVICE_ACCOUNT_JSON env var. See FIREBASE_SETUP.md for instructions.');
+    }
+    throw error;
   }
-  return db;
 }
 
 async function createUserProfile(uid, payload) {
@@ -71,6 +78,52 @@ async function listUserSchedules(userId) {
   return q.docs.map(d => d.data());
 }
 
+// Simple schedule functions for basic schedule management
+async function saveSimpleSchedule(scheduleData) {
+  const id = `schedule_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  
+  const schedule = {
+    id,
+    userId: scheduleData.userId,
+    title: scheduleData.title,
+    date: scheduleData.date,
+    time: scheduleData.time,
+    description: scheduleData.description || '',
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await getDb().collection(SCHEDULES).doc(id).set(schedule);
+  return id;
+}
+
+async function getUserSchedules(userId) {
+  try {
+    const q = await getDb().collection(SCHEDULES)
+      .where('userId', '==', userId)
+      .orderBy('updatedAt', 'desc')
+      .get();
+    return q.docs.map(d => d.data());
+  } catch (error) {
+    // If index error, try without orderBy
+    if (error.message && error.message.includes('index')) {
+      const q = await getDb().collection(SCHEDULES)
+        .where('userId', '==', userId)
+        .get();
+      const schedules = q.docs.map(d => d.data());
+      // Sort in memory instead
+      return schedules.sort((a, b) => {
+        const aTime = a.updatedAt?._seconds || a.updatedAt?.seconds || 0;
+        const bTime = b.updatedAt?._seconds || b.updatedAt?.seconds || 0;
+        return bTime - aTime; // Descending order
+      });
+    }
+    throw error;
+  }
+}
+
 module.exports = {
   createUserProfile,
   getUserProfile,
@@ -79,6 +132,8 @@ module.exports = {
   saveSchedule,
   getScheduleById,
   listUserSchedules,
+  saveSimpleSchedule,
+  getUserSchedules,
 };
 
 

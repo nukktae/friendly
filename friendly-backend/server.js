@@ -11,7 +11,7 @@ app.use(express.json({ limit: '2mb' }));
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
-app.use('/api/schedules', require('./routes/schedules'));
+app.use('/api/schedule', require('./routes/schedules'));
 app.use('/api/calendar', require('./routes/calendar'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
