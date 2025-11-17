@@ -1,5 +1,6 @@
 import { auth, googleProvider } from "@/src/config/firebase";
 import { User } from '@/src/types';
+import { ENV } from '@/src/config/env';
 import {
   createUserWithEmailAndPassword,
   User as FirebaseUser,
@@ -7,10 +8,13 @@ import {
   onAuthStateChanged,
   signInWithCredential,
   signInWithEmailAndPassword,
-  signOut
+  signOut,
+  getIdToken,
 } from "firebase/auth";
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+
+const API_BASE = ENV.API_BASE || 'http://localhost:4000';
 
 // Conditionally import GoogleSignin only for mobile platforms
 let GoogleSignin: any = null;
@@ -59,9 +63,36 @@ export class AuthService {
     }
   }
 
+  /**
+   * Login with email/password using backend API
+   * First signs in with Firebase, then verifies with backend
+   */
   static async login(email: string, password: string): Promise<void> {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      // First, sign in with Firebase Auth to get the user and ID token
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      // Get ID token for backend verification
+      const idToken = await getIdToken(userCredential.user);
+      
+      // Call backend login endpoint with ID token
+      const response = await fetch(`${API_BASE}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          idToken, // Use idToken for backend verification
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        // Sign out from Firebase if backend login fails
+        await signOut(auth);
+        throw new Error(error.error || 'Login failed');
+      }
+
       // Auth state will be updated by onAuthStateChanged listener
     } catch (error: any) {
       console.error("Error signing in:", error);
@@ -81,15 +112,52 @@ export class AuthService {
     }
   }
 
+  /**
+   * Signup with email/password using backend API
+   * Backend creates the Firebase user and returns a custom token
+   */
   static async signup(email: string, password: string, name?: string): Promise<void> {
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      // Call backend signup endpoint - it creates the Firebase user
+      const response = await fetch(`${API_BASE}/api/auth/signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          name: name || '',
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Signup failed');
+      }
+
+      const data = await response.json();
+      
+      // Backend creates the user and returns a custom token
+      // We need to sign in with Firebase using email/password to get the user
+      // The backend has already created the user, so this will just authenticate
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
       // Auth state will be updated by onAuthStateChanged listener
+      } catch (firebaseError: any) {
+        // If user already exists (which it should from backend), try to sign in
+        if (firebaseError.code === 'auth/email-already-in-use') {
+          // User was created by backend, just sign in
+          await signInWithEmailAndPassword(auth, email, password);
+        } else {
+          throw firebaseError;
+        }
+      }
     } catch (error: any) {
       console.error("Error signing up:", error);
       
       // Provide more specific error messages
-      if (error.code === 'auth/email-already-in-use') {
+      if (error.message?.includes('already exists') || error.message?.includes('email-already-in-use')) {
         throw new Error('An account with this email already exists. Please sign in instead.');
       } else if (error.code === 'auth/weak-password') {
         throw new Error('Password should be at least 6 characters long.');
@@ -103,28 +171,94 @@ export class AuthService {
 
   static async signInWithGoogle(): Promise<void> {
     try {
+      let idToken: string | null = null;
+      let userId: string | null = null;
+      
       if (Platform.OS === 'web' && signInWithPopup) {
         // Web implementation using Firebase popup
-        await signInWithPopup(auth, googleProvider);
-        // Auth state will be updated by onAuthStateChanged listener
+        const result = await signInWithPopup(auth, googleProvider);
+        idToken = await getIdToken(result.user);
+        userId = result.user.uid;
       } else if ((Platform.OS === 'ios' || Platform.OS === 'android') && GoogleSignin && typeof GoogleSignin.signIn === 'function') {
         // Mobile implementation using Google Sign-In
         await GoogleSignin.hasPlayServices();
         const userInfo = await GoogleSignin.signIn();
         const googleCredential = GoogleAuthProvider.credential(userInfo.data?.idToken);
-        await signInWithCredential(auth, googleCredential);
-        // Auth state will be updated by onAuthStateChanged listener
+        const userCredential = await signInWithCredential(auth, googleCredential);
+        idToken = await getIdToken(userCredential.user);
+        userId = userCredential.user.uid;
       } else {
         throw new Error('Google sign-in is not supported on this platform. Please use email/password authentication.');
       }
+
+      // Call backend Google Sign-In endpoint to create/update profile
+      if (idToken) {
+        try {
+          const response = await fetch(`${API_BASE}/api/auth/google`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ idToken }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            console.log('Backend Google sign-in failed, continuing with Firebase auth:', error);
+            // Continue even if backend call fails - Firebase auth is already successful
+          } else {
+            // Backend successfully created/updated profile
+            // Wait a bit to ensure profile is fully created before auth state change triggers profile loading
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        } catch (error) {
+          console.log('Backend Google sign-in error, continuing with Firebase auth:', error);
+          // Continue even if backend call fails - Firebase auth is already successful
+        }
+      }
+
+      // Auth state will be updated by onAuthStateChanged listener
     } catch (error) {
       console.error("Error signing in with Google:", error);
       throw error;
     }
   }
 
+  /**
+   * Logout - calls backend API and Firebase Auth
+   */
   static async logout(): Promise<void> {
     try {
+      // Get ID token before signing out
+      let idToken: string | undefined;
+      if (auth.currentUser) {
+        try {
+          idToken = await getIdToken(auth.currentUser);
+        } catch (error) {
+          console.log('Could not get ID token:', error);
+        }
+      }
+
+      // Call backend signout endpoint
+      try {
+        const response = await fetch(`${API_BASE}/api/auth/signout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            idToken: idToken || undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          console.log('Backend signout failed, continuing with Firebase signout');
+        }
+      } catch (error) {
+        console.log('Backend signout error, continuing with Firebase signout:', error);
+      }
+
+      // Sign out from Firebase Auth
       await signOut(auth);
     } catch (error) {
       console.error("Error signing out:", error);

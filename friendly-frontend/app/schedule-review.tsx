@@ -10,6 +10,7 @@ export default function ScheduleReviewRoute() {
   const params = useLocalSearchParams();
   const { userProfile, user } = useApp();
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
+  const [scheduleId, setScheduleId] = useState<string | null>(null);
   const hasParsedRef = useRef(false);
   const hasNavigatedBackRef = useRef(false);
 
@@ -18,6 +19,8 @@ export default function ScheduleReviewRoute() {
 
     const itemsParam = params.items;
     const itemsString = Array.isArray(itemsParam) ? itemsParam[0] : itemsParam;
+    const scheduleIdParam = params.scheduleId;
+    const scheduleIdString = Array.isArray(scheduleIdParam) ? scheduleIdParam[0] : scheduleIdParam;
     
     if (itemsString && typeof itemsString === 'string') {
       try {
@@ -30,6 +33,12 @@ export default function ScheduleReviewRoute() {
             : item.location
         }));
         setScheduleItems(filteredItems);
+        
+        // Set scheduleId if provided
+        if (scheduleIdString && typeof scheduleIdString === 'string') {
+          setScheduleId(scheduleIdString);
+        }
+        
         hasParsedRef.current = true;
       } catch (error) {
         console.error('Failed to parse schedule items:', error);
@@ -63,6 +72,7 @@ export default function ScheduleReviewRoute() {
     <View style={{ flex: 1 }}>
       <ScheduleReviewScreen
         initialItems={scheduleItems}
+        scheduleId={scheduleId}
         userId={userId}
         userProfile={userProfile}
         onBack={handleBack}

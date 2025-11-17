@@ -6,7 +6,26 @@ import { HapticTab } from '@/src/components/custom/haptic-tab';
 import { useApp } from '@/src/context/AppContext';
 
 export default function TabLayout() {
-  const { startTutorial } = useApp();
+  const { startTutorial, loadUserProfile, user, isAuthenticated } = useApp();
+
+  // Load profile when user is authenticated and on tabs (not on auth pages)
+  useEffect(() => {
+    if (isAuthenticated && user?.uid) {
+      // Add a small delay to ensure profile is created (especially after Google Sign-In)
+      const timer = setTimeout(() => {
+        loadUserProfile().then(() => {
+          // If profile is still null after loading, retry once (profile might still be creating)
+          // Check after a short delay if profile was loaded
+          setTimeout(() => {
+            // Retry loading profile if it's still not loaded
+            loadUserProfile();
+          }, 500);
+        });
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, user?.uid, loadUserProfile]);
 
   // Start dashboard tutorial when user first accesses the tabs
   useEffect(() => {

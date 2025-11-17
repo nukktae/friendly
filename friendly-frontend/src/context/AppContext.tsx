@@ -12,6 +12,7 @@ interface AppContextType {
   userProfile: UserProfile | null;
   isOnboardingComplete: boolean;
   setIsOnboardingComplete: (completed: boolean) => void;
+  loadUserProfile: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -61,6 +62,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentTutorial, setCurrentTutorial] = useState<TutorialConfig | null>(null);
   const [currentTutorialStep, setCurrentTutorialStep] = useState(0);
 
+  // Function to load user profile explicitly
+  const loadUserProfile = async () => {
+    if (!user?.uid) return;
+    
+    try {
+      const profile = await FirestoreService.getUserProfile(user.uid);
+      if (profile) {
+        setUserProfile(profile);
+        setIsOnboardingComplete(profile.onboardingCompleted);
+      } else {
+        // Profile doesn't exist yet - this is normal for new users
+        setUserProfile(null);
+        setIsOnboardingComplete(false);
+      }
+    } catch (error: any) {
+      // FirestoreService now returns null instead of throwing for 404s
+      // Only log unexpected errors
+      if (!error?.message?.includes('Network request failed') && 
+          !error?.message?.includes('Failed to fetch') &&
+          !error?.message?.includes('not found') &&
+          !error?.message?.includes('404')) {
+        console.error('Error loading user profile:', error);
+      }
+      setUserProfile(null);
+      setIsOnboardingComplete(false);
+    }
+  };
+
   // Listen to auth state changes
   useEffect(() => {
     // Configure Google Sign-In for mobile platforms
@@ -70,25 +99,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (user) {
         setIsAuthenticated(true);
         setUser(user);
-        
-        // Load user profile and check onboarding status
-        try {
-          const profile = await FirestoreService.getUserProfile(user.uid);
-          if (profile) {
-            setUserProfile(profile);
-            setIsOnboardingComplete(profile.onboardingCompleted);
-          } else {
-            setUserProfile(null);
-            setIsOnboardingComplete(false);
-          }
-        } catch (error: any) {
-          // Only log non-network errors (network errors are already handled in FirestoreService)
-          if (!error?.message?.includes('Network request failed') && !error?.message?.includes('Failed to fetch')) {
-            console.error('Error loading user profile:', error);
-          }
+        // Don't load profile automatically - let components request it when needed
+        // This prevents loading on auth pages
           setUserProfile(null);
           setIsOnboardingComplete(false);
-        }
       } else {
         setIsAuthenticated(false);
         setUser(null);
@@ -244,6 +258,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     userProfile,
     isOnboardingComplete,
     setIsOnboardingComplete,
+    loadUserProfile,
     login,
     signup,
     signInWithGoogle,

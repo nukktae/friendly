@@ -600,6 +600,20 @@ export class GoogleCalendarService {
   }
 
   /**
+   * Get access token for backend API calls
+   * Returns null if not authenticated or token is invalid
+   */
+  async getAccessToken(): Promise<string | null> {
+    try {
+      const tokens = await this.getValidTokens();
+      return tokens?.accessToken || null;
+    } catch (error) {
+      console.error('Error getting access token:', error);
+      return null;
+    }
+  }
+
+  /**
    * Convert Google Calendar events to app schedule format
    */
   convertEventsToSchedule(events: GoogleCalendarEvent[]): ScheduleItem[] {
@@ -798,11 +812,91 @@ export class GoogleCalendarService {
   }
 
   /**
-   * Sync events from Google Calendar to app
+   * Sync events from Google Calendar to app (local conversion only)
    */
   async syncFromGoogleCalendar(startDate: Date, endDate: Date): Promise<ScheduleItem[]> {
     const events = await this.fetchEvents(startDate, endDate);
     return this.convertEventsToSchedule(events);
+  }
+
+  /**
+   * Sync Google Calendar events to backend schedule
+   * This calls the backend API to create a schedule from Google Calendar events
+   */
+  async syncToBackendSchedule(
+    userId: string,
+    options: {
+      calendarId?: string;
+      timeMin?: string;
+      timeMax?: string;
+    } = {}
+  ): Promise<{
+    success: boolean;
+    scheduleId: string | null;
+    items: Array<{
+      day: string;
+      name: string;
+      place: string | null;
+      time: string | null;
+    }>;
+    count: number;
+    message: string;
+  }> {
+    try {
+      // Check if user is authenticated
+      const isAuth = await this.isAuthenticated();
+      if (!isAuth) {
+        throw new Error('Not authenticated with Google Calendar. Please sign in first.');
+      }
+
+      // Get access token
+      const accessToken = await this.getAccessToken();
+      if (!accessToken) {
+        throw new Error('No valid access token available. Please sign in again.');
+      }
+
+      // Prepare request body
+      const requestBody: {
+        userId: string;
+        accessToken: string;
+        calendarId?: string;
+        timeMin?: string;
+        timeMax?: string;
+      } = {
+        userId,
+        accessToken,
+      };
+
+      if (options.calendarId) {
+        requestBody.calendarId = options.calendarId;
+      }
+      if (options.timeMin) {
+        requestBody.timeMin = options.timeMin;
+      }
+      if (options.timeMax) {
+        requestBody.timeMax = options.timeMax;
+      }
+
+      // Call backend API
+      const response = await fetch(`${ENV.API_BASE}/api/calendar/sync-to-schedule`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Failed to sync calendar: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      console.error('Error syncing Google Calendar to backend schedule:', error);
+      throw error;
+    }
   }
 
   /**

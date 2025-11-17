@@ -12,7 +12,7 @@ import {
   View,
   Platform
 } from 'react-native';
-import { ScheduleItem } from '@/src/services/schedule/scheduleAIService';
+import scheduleAIService, { ScheduleItem } from '@/src/services/schedule/scheduleAIService';
 import scheduleStorageService, { UserSchedule } from '@/src/services/schedule/scheduleStorageService';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -25,6 +25,7 @@ interface EditedScheduleItem extends ScheduleItem {
 
 interface ScheduleReviewScreenProps {
   initialItems: ScheduleItem[];
+  scheduleId?: string | null;
   userId: string;
   userProfile?: any;
   onBack: () => void;
@@ -33,6 +34,7 @@ interface ScheduleReviewScreenProps {
 
 export default function ScheduleReviewScreen({
   initialItems,
+  scheduleId,
   userId,
   userProfile,
   onBack,
@@ -154,34 +156,29 @@ export default function ScheduleReviewScreen({
       return;
     }
 
+    if (!scheduleId) {
+      Alert.alert('Error', 'Schedule ID is missing. Please try analyzing the image again.');
+      return;
+    }
+
     try {
       setIsSaving(true);
       
-      const newSchedule: Omit<UserSchedule, 'id' | 'createdAt' | 'updatedAt'> = {
-        userId: userId,
-        title: `Schedule ${new Date().toLocaleDateString()}`,
-        description: 'AI-generated schedule',
-        items: scheduleItems,
-        isActive: true,
-      };
-
-      // Save schedule locally (storage service is frontend-only now)
-      let scheduleId: string;
-      try {
-        scheduleId = await scheduleStorageService.saveSchedule(userId, newSchedule);
-      } catch (error) {
-        // If saveSchedule throws, it means both backend and local save failed
-        throw error;
-      }
+      // Call the confirm schedule API
+      const result = await scheduleAIService.confirmSchedule(scheduleId, userId);
       
-      Alert.alert('Success', 'Schedule saved successfully!', [
-        {
-          text: 'OK',
-          onPress: onSaveSuccess
-        }
-      ]);
+      Alert.alert(
+        'Success', 
+        `Schedule confirmed successfully! ${result.count} lecture(s) created.`, 
+        [
+          {
+            text: 'OK',
+            onPress: onSaveSuccess
+          }
+        ]
+      );
     } catch (error) {
-      console.error('Failed to save schedule:', error);
+      console.error('Failed to confirm schedule:', error);
       
       // Check for network errors
       const isNetworkError = error instanceof TypeError && 
@@ -195,21 +192,20 @@ export default function ScheduleReviewScreen({
           'Unable to connect to the server. Please make sure:\n\n' +
           '1. The backend server is running\n' +
           '2. You have an active internet connection\n' +
-          '3. The API URL is configured correctly\n\n' +
-          'Your schedule will be saved locally and synced when the connection is restored.',
+          '3. The API URL is configured correctly',
           [{ text: 'OK' }]
         );
-      } else if (error instanceof Error && error.message.includes('permissions')) {
+      } else if (error instanceof Error && error.message.includes('not found')) {
         Alert.alert(
-          'Permission Error', 
-          'Unable to save schedule. Please check your authentication and try again.'
+          'Schedule Not Found', 
+          'The schedule could not be found. Please try analyzing the image again.'
         );
       } else {
         Alert.alert(
           'Error', 
           error instanceof Error 
-            ? `Failed to save schedule: ${error.message}` 
-            : 'Failed to save schedule. Please try again.'
+            ? `Failed to confirm schedule: ${error.message}` 
+            : 'Failed to confirm schedule. Please try again.'
         );
       }
     } finally {

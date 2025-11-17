@@ -194,6 +194,83 @@ async function deleteUser(uid) {
   }
 }
 
+/**
+ * Sign in with Google
+ * Verifies the Google ID token and creates/updates user account
+ * Note: User is typically already created by Firebase Auth on the client side
+ */
+async function signInWithGoogle(idToken) {
+  try {
+    const auth = getAuth();
+    
+    // Verify the ID token from Google Sign-In
+    const decodedToken = await auth.verifyIdToken(idToken);
+    
+    // Get user record (should exist if signed in via Firebase Auth)
+    let userRecord;
+    try {
+      userRecord = await auth.getUser(decodedToken.uid);
+      
+      // Update user info if needed (e.g., if display name or photo changed)
+      const updateData = {};
+      if (decodedToken.name && userRecord.displayName !== decodedToken.name) {
+        updateData.displayName = decodedToken.name;
+      }
+      if (decodedToken.picture && userRecord.photoURL !== decodedToken.picture) {
+        updateData.photoURL = decodedToken.picture;
+      }
+      if (Object.keys(updateData).length > 0) {
+        await auth.updateUser(decodedToken.uid, updateData);
+        userRecord = await auth.getUser(decodedToken.uid);
+      }
+    } catch (error) {
+      // User doesn't exist (edge case), create new user
+      userRecord = await auth.createUser({
+        uid: decodedToken.uid,
+        email: decodedToken.email,
+        displayName: decodedToken.name || decodedToken.email?.split('@')[0] || 'User',
+        emailVerified: decodedToken.email_verified || false,
+        photoURL: decodedToken.picture || null,
+      });
+    }
+    
+    // Check if profile exists, create if it doesn't
+    let profile = await getUserProfile(decodedToken.uid);
+    if (!profile) {
+      // Create user profile
+      try {
+        await createUserProfile(decodedToken.uid, {
+          email: decodedToken.email,
+          fullName: decodedToken.name || decodedToken.email?.split('@')[0] || '',
+          nickname: '',
+          university: '',
+          onboardingCompleted: false,
+          enrolledClasses: [],
+        });
+        // Wait a moment for Firestore to write
+        await new Promise(resolve => setTimeout(resolve, 100));
+        profile = await getUserProfile(decodedToken.uid);
+        
+        if (!profile) {
+          console.warn(`Profile was not found after creation for user ${decodedToken.uid}`);
+        }
+      } catch (profileError) {
+        console.error(`Error creating profile for user ${decodedToken.uid}:`, profileError);
+        // Continue even if profile creation fails
+      }
+    }
+    
+    return {
+      uid: userRecord.uid,
+      email: userRecord.email,
+      name: userRecord.displayName,
+      profile: profile || null,
+    };
+  } catch (error) {
+    throw new Error(`Google sign-in failed: ${error.message}`);
+  }
+}
+
 module.exports = {
   signup,
   login,
@@ -201,5 +278,6 @@ module.exports = {
   getUserById,
   updateUser,
   deleteUser,
+  signInWithGoogle,
 };
 

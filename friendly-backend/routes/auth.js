@@ -6,6 +6,7 @@ const {
   getUserById,
   updateUser,
   deleteUser,
+  signInWithGoogle,
 } = require('../services/authService');
 
 /**
@@ -186,6 +187,86 @@ router.delete('/user/:uid', async (req, res) => {
     console.error('Delete user error:', error);
     res.status(400).json({ 
       error: error.message || 'Delete failed' 
+    });
+  }
+});
+
+/**
+ * POST /api/auth/google
+ * Sign in with Google
+ * Body: { idToken } - Google ID token from client-side Firebase Auth
+ */
+router.post('/google', async (req, res) => {
+  try {
+    const { idToken } = req.body;
+    
+    if (!idToken) {
+      return res.status(400).json({ 
+        error: 'idToken is required' 
+      });
+    }
+
+    const user = await signInWithGoogle(idToken);
+    res.json({
+      success: true,
+      user: {
+        uid: user.uid,
+        email: user.email,
+        name: user.name,
+        profile: user.profile,
+      },
+    });
+  } catch (error) {
+    console.error('Google sign-in error:', error);
+    res.status(401).json({ 
+      error: error.message || 'Google sign-in failed' 
+    });
+  }
+});
+
+/**
+ * POST /api/auth/signout
+ * Sign out user (revoke token)
+ * Body: { idToken } (optional - for token revocation)
+ */
+router.post('/signout', async (req, res) => {
+  try {
+    const { idToken } = req.body;
+    
+    // If idToken is provided, we can verify it
+    // Note: Firebase Admin SDK doesn't have a direct revoke method,
+    // but we can verify the token and confirm sign out
+    if (idToken) {
+      try {
+        const admin = require('../services/firebaseAdmin');
+        if (admin && admin.auth) {
+          const auth = admin.auth();
+          await auth.verifyIdToken(idToken);
+          // Token is valid, sign out is successful
+          // In a production app, you might want to track active sessions
+        }
+        res.json({
+          success: true,
+          message: 'Signed out successfully',
+        });
+      } catch (error) {
+        // Token might already be invalid, but sign out is still successful
+        res.json({
+          success: true,
+          message: 'Signed out successfully',
+        });
+      }
+    } else {
+      // No token provided, just confirm sign out
+      res.json({
+        success: true,
+        message: 'Signed out successfully',
+      });
+    }
+  } catch (error) {
+    console.error('Sign out error:', error);
+    res.status(500).json({ 
+      error: error.message || 'Sign out failed' 
     });
   }
 });

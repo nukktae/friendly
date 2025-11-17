@@ -73,6 +73,70 @@ router.get('/calendars', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/calendar/sync-to-schedule
+ * Sync Google Calendar events and create a schedule
+ * Body: { userId, accessToken, calendarId?, timeMin?, timeMax? }
+ */
+router.post('/sync-to-schedule', async (req, res) => {
+  try {
+    const { userId, accessToken, calendarId, timeMin, timeMax } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+    
+    if (!accessToken) {
+      return res.status(400).json({ error: 'accessToken is required' });
+    }
+    
+    const { syncGoogleCalendarToSchedule } = require('../services/scheduleService');
+    
+    const result = await syncGoogleCalendarToSchedule(userId, accessToken, {
+      calendarId: calendarId || 'primary',
+      timeMin,
+      timeMax,
+    });
+    
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Error syncing calendar to schedule:', error);
+    res.status(500).json({ error: error.message || 'Failed to sync Google Calendar' });
+  }
+});
+
+/**
+ * POST /api/calendar/disconnect
+ * Disconnect/unsync Google Calendar
+ * Body: { userId, deleteSchedules?: boolean }
+ */
+router.post('/disconnect', async (req, res) => {
+  try {
+    const { userId, deleteSchedules = false } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+    
+    const { disconnectGoogleCalendar } = require('../services/scheduleService');
+    
+    const result = await disconnectGoogleCalendar(userId, {
+      deleteSchedules: deleteSchedules === true || deleteSchedules === 'true',
+    });
+    
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Error disconnecting Google Calendar:', error);
+    res.status(500).json({ error: error.message || 'Failed to disconnect Google Calendar' });
+  }
+});
+
 module.exports = router;
 
 

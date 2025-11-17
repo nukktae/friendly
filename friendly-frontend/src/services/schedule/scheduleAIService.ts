@@ -1,3 +1,5 @@
+import { ENV } from '../../config/env';
+
 export interface ScheduleItem {
   id: string;
   title: string;
@@ -21,6 +23,7 @@ export interface CorrectionCommand {
 
 export class ScheduleAIService {
   private static instance: ScheduleAIService;
+  private readonly API_BASE = ENV.API_BASE;
 
   public static getInstance(): ScheduleAIService {
     if (!ScheduleAIService.instance) {
@@ -30,171 +33,164 @@ export class ScheduleAIService {
   }
 
   /**
-   * Mock AI analysis of schedule image
-   * Simulates 2-3 second processing time
-   * Uses mock data based on the calendar schedule image
+   * Analyze schedule image using backend API
+   * Calls the /api/schedule/:userId/analyze-image endpoint
+   * Returns both schedule items and the scheduleId
    */
-  async analyzeScheduleImage(imageUri: string): Promise<ScheduleItem[]> {
-    // Simulate processing delay
-    await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000));
-
-    // Mock schedule data based on the calendar image (Monday 15 - Thursday 18)
-    const mockSchedules: ScheduleItem[] = [
-      // Monday 15
-      {
-        id: '1',
-        title: '소셜마케팅캠페인 (Social Marketing Campaign)',
-        time: '1:30 PM - 4:30 PM',
-        day: 'Monday',
-        location: 'Room TBD',
-        type: 'class',
-        confidence: 0.92,
-        startTime: '13:30',
-        endTime: '16:30'
-      },
-      {
-        id: '2',
-        title: '이산수학 (Discrete Mathematics)',
-        time: '4:30 PM - 6:00 PM',
-        day: 'Monday',
-        location: 'Room TBD',
-        type: 'class',
-        confidence: 0.90,
-        startTime: '16:30',
-        endTime: '18:00'
-      },
-      // Tuesday 16
-      {
-        id: '3',
-        title: '알고리즘 (Algorithm)',
-        time: '10:30 AM - 12:00 PM',
-        day: 'Tuesday',
-        location: 'Room TBD',
-        type: 'class',
-        confidence: 0.93,
-        startTime: '10:30',
-        endTime: '12:00'
-      },
-      {
-        id: '4',
-        title: '컴퓨터구조 (Computer Architecture)',
-        time: '12:00 PM - 1:30 PM',
-        day: 'Tuesday',
-        location: 'Room TBD',
-        type: 'class',
-        confidence: 0.91,
-        startTime: '12:00',
-        endTime: '13:30'
-      },
-      {
-        id: '5',
-        title: 'Public Speaking: Science Communication',
-        time: '3:00 PM - 4:30 PM',
-        day: 'Tuesday',
-        location: 'Room TBD',
-        type: 'class',
-        confidence: 0.89,
-        startTime: '15:00',
-        endTime: '16:30'
-      },
-      {
-        id: '6',
-        title: '모바일프로그래밍 (Mobile Programming)',
-        time: '4:30 PM - 6:00 PM',
-        day: 'Tuesday',
-        location: 'Room TBD',
-        type: 'class',
-        confidence: 0.92,
-        startTime: '16:30',
-        endTime: '18:00'
-      },
-      {
-        id: '7',
-        title: '사제동행세미나 (Faculty-Student Seminar)',
-        time: '6:00 PM',
-        day: 'Tuesday',
-        location: 'Room TBD',
-        type: 'meeting',
-        confidence: 0.85,
-        startTime: '18:00',
-        endTime: '19:00'
-      },
-      // Wednesday 17
-      {
-        id: '8',
-        title: '소통과토론 (Communication and Discussion)',
-        time: '1:30 PM - 4:30 PM',
-        day: 'Wednesday',
-        location: 'Room TBD',
-        type: 'class',
-        confidence: 0.88,
-        startTime: '13:30',
-        endTime: '16:30'
-      },
-      {
-        id: '9',
-        title: '이산수학 (Discrete Mathematics)',
-        time: '4:30 PM - 6:00 PM',
-        day: 'Wednesday',
-        location: 'Room TBD',
-        type: 'class',
-        confidence: 0.90,
-        startTime: '16:30',
-        endTime: '18:00'
-      },
-      // Thursday 18
-      {
-        id: '10',
-        title: '알고리즘 (Algorithm)',
-        time: '10:30 AM - 12:00 PM',
-        day: 'Thursday',
-        location: 'Room TBD',
-        type: 'class',
-        confidence: 0.93,
-        startTime: '10:30',
-        endTime: '12:00'
-      },
-      {
-        id: '11',
-        title: '컴퓨터구조 (Computer Architecture)',
-        time: '12:00 PM - 1:30 PM',
-        day: 'Thursday',
-        location: 'Room TBD',
-        type: 'class',
-        confidence: 0.91,
-        startTime: '12:00',
-        endTime: '13:30'
-      },
-      {
-        id: '12',
-        title: 'Public Speaking: Science Communication',
-        time: '3:00 PM - 4:30 PM',
-        day: 'Thursday',
-        location: 'Room TBD',
-        type: 'class',
-        confidence: 0.89,
-        startTime: '15:00',
-        endTime: '16:30'
-      },
-      {
-        id: '13',
-        title: '모바일프로그래밍 (Mobile Programming)',
-        time: '4:30 PM - 6:00 PM',
-        day: 'Thursday',
-        location: 'Room TBD',
-        type: 'class',
-        confidence: 0.92,
-        startTime: '16:30',
-        endTime: '18:00'
+  async analyzeScheduleImage(imageUri: string, userId: string): Promise<{ items: ScheduleItem[]; scheduleId: string }> {
+    try {
+      const formData = new FormData();
+      
+      // Extract filename from URI
+      let filename = imageUri.split('/').pop() || `schedule_${Date.now()}.jpg`;
+      filename = filename.split('?')[0];
+      
+      // Determine file extension and MIME type
+      const extension = filename.split('.').pop()?.toLowerCase() || 'jpg';
+      const mimeTypeMap: { [key: string]: string } = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+      };
+      const type = mimeTypeMap[extension] || 'image/jpeg';
+      
+      if (!filename.includes('.')) {
+        filename = `${filename}.${extension}`;
       }
-    ];
 
-    // Add some randomness to make it feel more realistic
-    return mockSchedules.map(item => ({
-      ...item,
-      confidence: Math.max(0.75, item.confidence - Math.random() * 0.1)
-    }));
+      // Handle web vs native platforms differently
+      if (typeof window !== 'undefined' && window.File) {
+        // Web platform
+        try {
+          const response = await fetch(imageUri);
+          const blob = await response.blob();
+          const file = new File([blob], filename, { type });
+          formData.append('image', file);
+        } catch (error) {
+          console.error('Error converting image to blob:', error);
+          formData.append('image', imageUri as any);
+        }
+      } else {
+        // React Native platform
+        const fileData: any = {
+          uri: imageUri,
+          type: type,
+          name: filename,
+        };
+        formData.append('image', fileData);
+      }
+
+      // Add userId as form field
+      formData.append('userId', userId);
+
+      console.log('Calling analyze-image API for userId:', userId);
+
+      const response = await fetch(`${this.API_BASE}/api/schedule/${userId}/analyze-image`, {
+        method: 'POST',
+        body: formData,
+        // Don't set Content-Type header - let fetch set it automatically with boundary
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to analyze image' }));
+        throw new Error(error.error || `Failed to analyze image: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Image analysis failed');
+      }
+
+      // Convert API response format to ScheduleItem format
+      const scheduleItems: ScheduleItem[] = data.items.map((item: any, index: number) => ({
+        id: `item_${data.scheduleId}_${index}`,
+        title: item.name || '',
+        time: item.time || '',
+        day: item.day || '',
+        location: item.place || undefined,
+        type: 'class' as const,
+        confidence: 0.9, // API doesn't return confidence, use default
+        startTime: this.parseTime(item.time),
+        endTime: undefined, // API doesn't return end time separately
+      }));
+
+      // Return both items and scheduleId
+      return {
+        items: scheduleItems,
+        scheduleId: data.scheduleId,
+      };
+    } catch (error: any) {
+      console.error('Error analyzing schedule image:', error);
+      throw error;
+    }
   }
+
+  /**
+   * Confirm schedule and create lectures
+   * Calls the /api/schedule/schedule/:scheduleId/confirm endpoint
+   */
+  async confirmSchedule(scheduleId: string, userId: string): Promise<{
+    success: boolean;
+    scheduleId: string;
+    userId: string;
+    lecturesCreated: Array<{
+      lectureId: string;
+      title: string;
+      day: string;
+      place: string | null;
+      time: string;
+    }>;
+    count: number;
+    message: string;
+  }> {
+    try {
+      const response = await fetch(`${this.API_BASE}/api/schedule/schedule/${scheduleId}/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to confirm schedule' }));
+        throw new Error(error.error || `Failed to confirm schedule: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Error confirming schedule:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Parse time string to extract start time
+   */
+  private parseTime(timeString: string): string | undefined {
+    if (!timeString) return undefined;
+    // Try to extract time from strings like "3:00 PM" or "11:00 AM"
+    const match = timeString.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (match) {
+      let hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+      const period = match[3].toUpperCase();
+      
+      if (period === 'PM' && hours !== 12) {
+        hours += 12;
+      } else if (period === 'AM' && hours === 12) {
+        hours = 0;
+      }
+      
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    }
+    return undefined;
+  }
+
 
   /**
    * Parse voice/text correction commands

@@ -42,19 +42,37 @@ export class FirestoreService {
   static async getUserProfile(uid: string): Promise<UserProfile | null> {
     try {
       const res = await fetch(`${ENV.API_BASE}/api/users/${uid}/profile`);
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error(await res.text());
+      if (res.status === 404) {
+        // Profile doesn't exist - this is normal for new users
+        return null;
+      }
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Failed to fetch profile: ${res.statusText}`);
+      }
       const data = await res.json();
+      
+      // Backend returns { success: true, profile: {...} }
+      const profile = data.profile || data;
+      
       return {
-        uid: data.uid || uid,
-        email: data.email,
-        fullName: data.fullName,
-        nickname: data.nickname,
-        university: data.university,
-        createdAt: data.createdAt ? new Date(data.createdAt._seconds ? data.createdAt._seconds * 1000 : data.createdAt) : new Date(),
-        updatedAt: data.updatedAt ? new Date(data.updatedAt._seconds ? data.updatedAt._seconds * 1000 : data.updatedAt) : new Date(),
-        onboardingCompleted: !!data.onboardingCompleted,
-        enrolledClasses: data.enrolledClasses || [],
+        uid: profile.uid || uid,
+        email: profile.email || '',
+        fullName: profile.fullName || '',
+        nickname: profile.nickname || '',
+        university: profile.university || '',
+        createdAt: profile.createdAt 
+          ? (profile.createdAt instanceof Date 
+              ? profile.createdAt 
+              : new Date(profile.createdAt._seconds ? profile.createdAt._seconds * 1000 : Date.now()))
+          : new Date(),
+        updatedAt: profile.updatedAt 
+          ? (profile.updatedAt instanceof Date 
+              ? profile.updatedAt 
+              : new Date(profile.updatedAt._seconds ? profile.updatedAt._seconds * 1000 : Date.now()))
+          : new Date(),
+        onboardingCompleted: !!profile.onboardingCompleted,
+        enrolledClasses: profile.enrolledClasses || [],
       };
     } catch (error: any) {
       // Handle network errors gracefully - backend might not be running
@@ -62,8 +80,13 @@ export class FirestoreService {
         console.log('Backend server not reachable. User profile will be unavailable until backend is running.');
         return null; // Return null instead of throwing to allow app to continue
       }
+      // Don't throw error for 404 - it's expected for new users
+      if (error?.message?.includes('404') || error?.message?.includes('not found')) {
+        return null;
+      }
       console.error('Error getting user profile:', error);
-      throw error;
+      // Return null instead of throwing to prevent app crashes
+      return null;
     }
   }
 

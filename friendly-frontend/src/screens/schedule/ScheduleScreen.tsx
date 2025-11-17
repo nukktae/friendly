@@ -4,8 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Animated,
+  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -34,6 +36,8 @@ const SchedulePage: React.FC<SchedulePageProps> = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const [isLoading, setIsLoading] = useState(true);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState<string>('');
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
   const [userSchedules, setUserSchedules] = useState<UserSchedule[]>([]);
   const [isMounted, setIsMounted] = useState(false);
@@ -147,20 +151,35 @@ const SchedulePage: React.FC<SchedulePageProps> = () => {
 
   const handleImageSelected = async (imageUri: string) => {
     try {
-      setIsLoading(true);
-      const detectedItems = await aiService.analyzeScheduleImage(imageUri);
-      // Navigate to schedule review screen with the analyzed items
+      setIsAnalyzing(true);
+      setAnalysisProgress('Uploading image...');
+      const userId = userProfile?.uid || user?.uid;
+      if (!userId) {
+        Alert.alert('Error', 'User ID not found. Please sign in again.');
+        return;
+      }
+      
+      // Update progress messages
+      setTimeout(() => setAnalysisProgress('Analyzing schedule...'), 500);
+      
+      const result = await aiService.analyzeScheduleImage(imageUri, userId);
+      
+      setAnalysisProgress('Processing results...');
+      
+      // Navigate to schedule review screen with the analyzed items and scheduleId
       router.push({
         pathname: '/schedule-review',
         params: {
-          items: JSON.stringify(detectedItems),
+          items: JSON.stringify(result.items),
+          scheduleId: result.scheduleId,
         },
       });
     } catch (error) {
       console.error('Failed to analyze image:', error);
       Alert.alert('Error', 'Failed to analyze your schedule image. Please try again.');
     } finally {
-      setIsLoading(false);
+      setIsAnalyzing(false);
+      setAnalysisProgress('');
     }
   };
 
@@ -557,9 +576,33 @@ const SchedulePage: React.FC<SchedulePageProps> = () => {
         </>
       )}
 
+      {/* Analysis Loading Modal */}
+      {isAnalyzing && (
+        <Modal
+          visible={isAnalyzing}
+          transparent
+          animationType="fade"
+        >
+          <View style={styles.analysisOverlay}>
+            <View style={styles.analysisModal}>
+              <ActivityIndicator size="large" color="#6B7C32" />
+              <Text style={styles.analysisText}>
+                {analysisProgress || 'Analyzing your schedule...'}
+              </Text>
+              <Text style={styles.analysisSubtext}>
+                This may take a few seconds
+              </Text>
+            </View>
+          </View>
+        </Modal>
+      )}
+
       {/* Modals */}
       {/* AI Assistant FAB */}
-      <AIAssistantFAB scheduleData={{}} />
+      <AIAssistantFAB 
+        scheduleData={{}} 
+        userId={userProfile?.uid || user?.uid || 'guest'}
+      />
     </View>
   );
 };
@@ -724,6 +767,37 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#f0f0f0',
     marginHorizontal: 20,
+  },
+  analysisOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  analysisModal: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    minWidth: 280,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  analysisText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  analysisSubtext: {
+    fontSize: 14,
+    color: '#666666',
+    marginTop: 8,
+    textAlign: 'center',
   },
   googleIconContainer: {
     width: 20,

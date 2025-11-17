@@ -8,22 +8,59 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    View
+    View,
+    ActivityIndicator,
+    Alert,
+    TextInput,
 } from 'react-native';
+import { useAudioRecorder, RecordingPresets } from 'expo-audio';
+import { useApp } from '../../context/AppContext';
+import {
+  startTranscribing,
+  uploadAudioChunk,
+  transcribeLecture,
+  generateSummary,
+  generateChecklist,
+  updateChecklist,
+  toggleChecklistItem,
+  getLecture,
+} from '../../services/lecture/lectureService';
+import { Lecture, ActionItem } from '../../types/lecture.types';
+import LectureChatbot from '../../components/lecture/LectureChatbot';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 interface RecordScreenProps {
+  lectureId?: string; // Existing lecture ID (if transcribing an existing lecture)
   onBack: () => void;
   onSave?: () => void;
 }
 
-export default function RecordScreen({ onBack, onSave }: RecordScreenProps) {
+export default function RecordScreen({ lectureId: propLectureId, onBack, onSave }: RecordScreenProps) {
+  const { user } = useApp();
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [showSummary, setShowSummary] = useState(false);
-  const [activeTab, setActiveTab] = useState<'summary' | 'tasks' | 'transcript'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'tasks' | 'transcript' | 'chat'>('summary');
+  
+  // Recording state
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const [lectureId, setLectureId] = useState<string | null>(propLectureId || null);
+  const [transcriptionId, setTranscriptionId] = useState<string | null>(null);
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Lecture data
+  const [lecture, setLecture] = useState<Lecture | null>(null);
+  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
+  const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [newItemText, setNewItemText] = useState('');
+  
+  // Chunk upload interval
+  const chunkUploadInterval = useRef<NodeJS.Timeout | null>(null);
+  const lastChunkTime = useRef<number>(0);
   
   // Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -38,37 +75,32 @@ export default function RecordScreen({ onBack, onSave }: RecordScreenProps) {
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Mock AI summary data
-  const [summary, setSummary] = useState({
-    title: 'Algorithm Lecture - Sorting Algorithms',
-    duration: '12:34',
-    keyPoints: [
-      'Introduction to sorting algorithms and their complexity',
-      'Detailed explanation of Quick Sort implementation',
-      'Comparison between Merge Sort and Quick Sort',
-      'Best and worst case scenarios for different algorithms',
-      'Practical applications in real-world problems',
-    ],
-    actionItems: [
-      { id: '1', text: 'Implement Quick Sort in your preferred language', checked: false },
-      { id: '2', text: 'Complete practice problems on sorting', checked: false },
-      { id: '3', text: 'Review Big O notation concepts', checked: false },
-      { id: '4', text: 'Prepare for next week\'s algorithm quiz', checked: false },
-    ],
-    transcript: `Welcome to today's lecture on sorting algorithms. We'll be focusing on Quick Sort and Merge Sort.
+  // Load lecture data when available
+  useEffect(() => {
+    if (lectureId && user?.uid) {
+      loadLecture();
+    }
+  }, [lectureId, user?.uid]);
 
-Let's start with Quick Sort. Quick Sort is a divide-and-conquer algorithm that works by selecting a 'pivot' element and partitioning the array around it.
-
-The time complexity of Quick Sort is O(n log n) on average, but can degrade to O(n²) in the worst case when the pivot selection is poor.
-
-Now, let's compare this with Merge Sort. Merge Sort has a guaranteed O(n log n) time complexity but requires additional space.
-
-The key difference is that Quick Sort is in-place while Merge Sort requires extra memory for merging.
-
-In practical applications, Quick Sort is often preferred for its cache-friendly nature and lower constant factors.`,
-  });
-
-  const [checkedItems, setCheckedItems] = useState<{ [key: string]: boolean }>({});
+  const loadLecture = async () => {
+    if (!lectureId || !user?.uid) return;
+    try {
+      const data = await getLecture(lectureId, user.uid);
+      setLecture(data);
+      if (data.summary) {
+        setActionItems(data.summary.actionItems || []);
+      }
+      if (data.liveTranscript) {
+        setLiveTranscript(data.liveTranscript);
+      }
+      // Store transcriptionId if available
+      if (data.transcriptionId) {
+        setTranscriptionId(data.transcriptionId);
+      }
+    } catch (error) {
+      console.error('Error loading lecture:', error);
+    }
+  };
 
   useEffect(() => {
     if (isRecording && !isPaused) {
@@ -147,27 +179,159 @@ In practical applications, Quick Sort is often preferred for its cache-friendly 
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const startRecording = () => {
+  const startRecording = async () => {
+    if (!user?.uid) {
+      Alert.alert('Error', 'Please log in to record lectures');
+      return;
+    }
+
+    if (!lectureId) {
+      Alert.alert('Error', 'No lecture selected. Please select a lecture first.');
+      return;
+    }
+
+    try {
+      // Start transcribing the existing lecture
+      await startTranscribing(lectureId, user.uid);
+
+      // Prepare and start recording
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
     setIsRecording(true);
     setShowSummary(false);
     setRecordingTime(0);
+      setLiveTranscript('');
+      lastChunkTime.current = Date.now();
+
+      // Note: Live transcription via chunks is complex with expo-audio
+      // For now, we'll do final transcription after recording stops
+      // Live transcription can be added later with a different approach
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      Alert.alert('Error', 'Failed to start transcribing. Please try again.');
+    }
   };
 
-  const pauseRecording = () => {
-    setIsPaused(!isPaused);
+  const pauseRecording = async () => {
+    try {
+      if (isPaused) {
+        await audioRecorder.record();
+        setIsPaused(false);
+      } else {
+        await audioRecorder.pause();
+        setIsPaused(true);
+      }
+    } catch (error) {
+      console.error('Error pausing recording:', error);
+    }
   };
 
-  const stopRecording = () => {
+  const stopRecording = async () => {
+    if (!lectureId || !user?.uid) return;
+
+    try {
+      setIsProcessing(true);
+      
+      // Stop chunk uploads
+      if (chunkUploadInterval.current) {
+        clearInterval(chunkUploadInterval.current);
+        chunkUploadInterval.current = null;
+      }
+
+      // Stop recording
+      await audioRecorder.stop();
+      
+      // Get URI from recorder
+      const uri = audioRecorder.uri;
+      
+      if (!uri) {
+        throw new Error('No recording URI available');
+      }
+
+      // Transcribe audio file (this will transcribe using Whisper and delete the audio)
+      // Only the transcript is saved, not the audio file
+      const transcribeResult = await transcribeLecture(lectureId, uri, user.uid, recordingTime);
+      const newTranscriptionId = transcribeResult.transcriptionId;
+      setTranscriptionId(newTranscriptionId);
+
+      // Generate summary from the transcript using transcriptionId
+      await generateSummary(newTranscriptionId);
+
+      // Generate checklist from the transcript using transcriptionId
+      await generateChecklist(newTranscriptionId);
+
+      // Load updated lecture data
+      await loadLecture();
+
     setIsRecording(false);
     setIsPaused(false);
     setShowSummary(true);
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+      Alert.alert('Error', 'Failed to process recording. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const toggleCheckbox = (id: string) => {
-    setCheckedItems((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
+  const toggleCheckbox = async (id: string) => {
+    if (!transcriptionId) return;
+
+    try {
+      const updatedItem = await toggleChecklistItem(transcriptionId, id);
+      // Update the item in the local state
+      setActionItems(prevItems =>
+        prevItems.map(item => (item.id === id ? updatedItem : item))
+      );
+    } catch (error) {
+      console.error('Error toggling checklist item:', error);
+      Alert.alert('Error', 'Failed to toggle checklist item');
+    }
+  };
+
+  const addChecklistItem = async () => {
+    if (!newItemText.trim() || !transcriptionId) return;
+
+    try {
+      const updatedItems = await updateChecklist(transcriptionId, {
+        add: { text: newItemText.trim() },
+      });
+      setActionItems(updatedItems);
+      setNewItemText('');
+    } catch (error) {
+      console.error('Error adding checklist item:', error);
+      Alert.alert('Error', 'Failed to add checklist item');
+    }
+  };
+
+  const editChecklistItem = async (id: string) => {
+    if (!editText.trim() || !transcriptionId) return;
+
+    try {
+      const updatedItems = await updateChecklist(transcriptionId, {
+        edit: { id, text: editText.trim() },
+      });
+      setActionItems(updatedItems);
+      setEditingItem(null);
+      setEditText('');
+    } catch (error) {
+      console.error('Error editing checklist item:', error);
+      Alert.alert('Error', 'Failed to edit checklist item');
+    }
+  };
+
+  const deleteChecklistItem = async (id: string) => {
+    if (!transcriptionId) return;
+
+    try {
+      const updatedItems = await updateChecklist(transcriptionId, {
+        delete: { id },
+      });
+      setActionItems(updatedItems);
+    } catch (error) {
+      console.error('Error deleting checklist item:', error);
+      Alert.alert('Error', 'Failed to delete checklist item');
+    }
   };
 
   const saveRecording = () => {
@@ -177,6 +341,18 @@ In practical applications, Quick Sort is often preferred for its cache-friendly 
       onBack();
     }
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (chunkUploadInterval.current) {
+        clearInterval(chunkUploadInterval.current);
+      }
+      if (isRecording && audioRecorder.isRecording) {
+        audioRecorder.stop().catch(console.error);
+      }
+    };
+  }, [isRecording, audioRecorder]);
 
   if (showSummary) {
     return (
@@ -192,16 +368,26 @@ In practical applications, Quick Sort is often preferred for its cache-friendly 
             <Ionicons name="arrow-back" size={22} color="#111827" />
           </TouchableOpacity>
           <View style={styles.headerInfo}>
-            <Text style={styles.modernHeaderTitle}>{summary.title}</Text>
+            <Text style={styles.modernHeaderTitle}>
+              {lecture?.summary?.title || lecture?.title || 'Lecture Recording'}
+            </Text>
             <View style={styles.headerMetaRow}>
               <View style={styles.metaChip}>
                 <Ionicons name="time-outline" size={14} color="#6b7280" />
-                <Text style={styles.metaChipText}>{summary.duration}</Text>
+                <Text style={styles.metaChipText}>{formatTime(recordingTime)}</Text>
               </View>
+              {lecture?.summary && (
               <View style={styles.metaChip}>
                 <Ionicons name="sparkles" size={14} color="#a855f7" />
                 <Text style={styles.metaChipText}>AI Analyzed</Text>
               </View>
+              )}
+              {isProcessing && (
+                <View style={styles.metaChip}>
+                  <ActivityIndicator size="small" color="#6B7C32" />
+                  <Text style={styles.metaChipText}>Processing...</Text>
+                </View>
+              )}
             </View>
           </View>
         </View>
@@ -252,6 +438,21 @@ In practical applications, Quick Sort is often preferred for its cache-friendly 
               Transcript
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'chat' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('chat')}
+            activeOpacity={0.7}
+          >
+            <Ionicons 
+              name="chatbubbles-outline" 
+              size={20} 
+              color={activeTab === 'chat' ? '#6B7C32' : '#9ca3af'} 
+            />
+            <Text style={[styles.tabButtonText, activeTab === 'chat' && styles.tabButtonTextActive]}>
+              Chat
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Tab Content */}
@@ -263,43 +464,114 @@ In practical applications, Quick Sort is often preferred for its cache-friendly 
           {/* Summary Tab */}
           {activeTab === 'summary' && (
             <View style={styles.tabContent}>
-              {summary.keyPoints.map((point, index) => (
+              {isProcessing ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#6B7C32" />
+                  <Text style={styles.loadingText}>Generating summary...</Text>
+                </View>
+              ) : lecture?.summary?.keyPoints && lecture.summary.keyPoints.length > 0 ? (
+                lecture.summary.keyPoints.map((point: string, index: number) => (
                 <View key={index} style={styles.compactKeyPoint}>
                   <View style={styles.pointNumber}>
                     <Text style={styles.pointNumberText}>{index + 1}</Text>
                   </View>
                   <Text style={styles.compactPointText}>{point}</Text>
                 </View>
-              ))}
+                ))
+              ) : (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateText}>Summary will appear here after processing</Text>
+                </View>
+              )}
             </View>
           )}
 
           {/* Tasks Tab */}
           {activeTab === 'tasks' && (
             <View style={styles.tabContent}>
-              {summary.actionItems.map((item) => (
+              {actionItems.map((item) => (
+                <View key={item.id} style={styles.compactCheckbox}>
                 <TouchableOpacity
-                  key={item.id}
-                  style={styles.compactCheckbox}
                   onPress={() => toggleCheckbox(item.id)}
                   activeOpacity={0.7}
+                    style={styles.checkboxRow}
                 >
                   <View style={[
                     styles.modernCheckCircle,
-                    checkedItems[item.id] && styles.modernCheckCircleChecked
+                      item.checked && styles.modernCheckCircleChecked
                   ]}>
-                    {checkedItems[item.id] && (
+                      {item.checked && (
                       <Ionicons name="checkmark" size={16} color="#ffffff" />
                     )}
                   </View>
+                    {editingItem === item.id ? (
+                      <View style={styles.editRow}>
+                        <TextInput
+                          style={styles.editInput}
+                          value={editText}
+                          onChangeText={setEditText}
+                          autoFocus
+                          onSubmitEditing={() => editChecklistItem(item.id)}
+                        />
+                        <TouchableOpacity onPress={() => editChecklistItem(item.id)}>
+                          <Ionicons name="checkmark-circle" size={24} color="#6B7C32" />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => {
+                          setEditingItem(null);
+                          setEditText('');
+                        }}>
+                          <Ionicons name="close-circle" size={24} color="#ef4444" />
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <>
                   <Text style={[
                     styles.compactCheckboxText,
-                    checkedItems[item.id] && styles.compactCheckboxTextChecked
+                          item.checked && styles.compactCheckboxTextChecked
                   ]}>
                     {item.text}
                   </Text>
+                        <View style={styles.checkboxActions}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setEditingItem(item.id);
+                              setEditText(item.text);
+                            }}
+                          >
+                            <Ionicons name="create-outline" size={18} color="#6b7280" />
                 </TouchableOpacity>
+                          <TouchableOpacity onPress={() => deleteChecklistItem(item.id)}>
+                            <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                          </TouchableOpacity>
+                        </View>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
               ))}
+              
+              {/* Add new item */}
+              <View style={styles.addItemContainer}>
+                <TextInput
+                  style={styles.addItemInput}
+                  placeholder="Add new task..."
+                  placeholderTextColor="#9ca3af"
+                  value={newItemText}
+                  onChangeText={setNewItemText}
+                  onSubmitEditing={addChecklistItem}
+                />
+                <TouchableOpacity
+                  style={styles.addItemButton}
+                  onPress={addChecklistItem}
+                  disabled={!newItemText.trim()}
+                >
+                  <Ionicons
+                    name="add-circle"
+                    size={24}
+                    color={newItemText.trim() ? '#6B7C32' : '#d1d5db'}
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
           )}
 
@@ -307,8 +579,17 @@ In practical applications, Quick Sort is often preferred for its cache-friendly 
           {activeTab === 'transcript' && (
             <View style={styles.tabContent}>
               <View style={styles.transcriptCard}>
-                <Text style={styles.transcriptText}>{summary.transcript}</Text>
+                <Text style={styles.transcriptText}>
+                  {lecture?.transcript || lecture?.liveTranscript || 'Transcript will appear here after processing'}
+                </Text>
               </View>
+            </View>
+          )}
+
+          {/* Chat Tab */}
+          {activeTab === 'chat' && user?.uid && (
+            <View style={styles.tabContent}>
+              <LectureChatbot userId={user.uid} />
             </View>
           )}
 
@@ -576,7 +857,7 @@ In practical applications, Quick Sort is often preferred for its cache-friendly 
               end={{ x: 1, y: 1 }}
             >
               <Ionicons name="mic" size={32} color="#ffffff" />
-              <Text style={styles.mainButtonText}>Start Recording</Text>
+              <Text style={styles.mainButtonText}>Start Transcribing</Text>
             </LinearGradient>
           </TouchableOpacity>
         ) : (
@@ -1091,6 +1372,69 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
     letterSpacing: 0.3,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 15,
+    color: '#6b7280',
+  },
+  emptyState: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 15,
+    color: '#9ca3af',
+    textAlign: 'center',
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  checkboxActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 8,
+  },
+  editInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#374151',
+    borderBottomWidth: 1,
+    borderBottomColor: '#6B7C32',
+    paddingVertical: 4,
+  },
+  addItemContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 14,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderStyle: 'dashed',
+    marginTop: 8,
+  },
+  addItemInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#374151',
+  },
+  addItemButton: {
+    padding: 4,
   },
 });
 

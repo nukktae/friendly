@@ -4,8 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import scheduleStorageService from '@/src/services/schedule/scheduleStorageService';
 import { ScheduleItem } from '@/src/services/schedule/scheduleAIService';
+import { getLectures } from '@/src/services/lecture/lectureService';
+import { Lecture } from '@/src/types/lecture.types';
 
 interface ClassesPageProps {
   title: string;
@@ -33,23 +34,74 @@ const ClassesPage: React.FC<ClassesPageProps> = ({
     return new Date(d.setDate(diff));
   }
 
-  // Load classes from user schedules
+  // Helper function to parse day and time from description
+  const parseDescription = (description: string): { day: string; time: string } => {
+    let day = '';
+    let time = '';
+    
+    // Parse format: "Day: Tuesday | Time: 03:00 PM"
+    const dayMatch = description.match(/Day:\s*([^|]+)/i);
+    const timeMatch = description.match(/Time:\s*([^|]+)/i);
+    
+    if (dayMatch) {
+      day = dayMatch[1].trim();
+    }
+    
+    if (timeMatch) {
+      time = timeMatch[1].trim();
+    }
+    
+    return { day, time };
+  };
+
+  // Convert Lecture to ScheduleItem format
+  const lectureToScheduleItem = (lecture: Lecture): ScheduleItem => {
+    const { day, time } = parseDescription(lecture.description || '');
+    
+    // Use tags as fallback for day if not found in description
+    let finalDay = day;
+    if (!finalDay && lecture.tags && lecture.tags.length > 0) {
+      // Tags are lowercase (e.g., "tuesday"), convert to capitalized day name
+      const tagDay = lecture.tags[0];
+      finalDay = tagDay.charAt(0).toUpperCase() + tagDay.slice(1);
+    }
+    
+    // Extract location from description if available (format: "Day: Tuesday | Time: 03:00 PM | Place: Room 101")
+    const placeMatch = lecture.description?.match(/Place:\s*([^|]+)/i);
+    const location = placeMatch ? placeMatch[1].trim() : undefined;
+    
+    return {
+      id: lecture.id,
+      title: lecture.title,
+      time: time || 'TBD',
+      day: finalDay || 'Unknown',
+      location: location,
+      type: 'class' as const,
+      confidence: 1.0,
+    };
+  };
+
+  // Load classes from lectures API
   useEffect(() => {
     const loadClasses = async () => {
-      const userId = userProfile?.uid || user?.uid || 'guest';
+      const userId = userProfile?.uid || user?.uid;
+
+      if (!userId || userId === 'guest') {
+        setIsLoading(false);
+        setClasses([]);
+        return;
+      }
 
       try {
         setIsLoading(true);
-        const schedules = await scheduleStorageService.getUserSchedules(userId);
+        const response = await getLectures({ userId });
         
-        // Extract all classes from all schedules
-        const allClasses: ScheduleItem[] = [];
-        schedules.forEach(schedule => {
-          const classItems = schedule.items.filter(item => item.type === 'class');
-          allClasses.push(...classItems);
-        });
+        // Convert lectures to ScheduleItem format
+        const scheduleItems: ScheduleItem[] = response.lectures.map(lecture => 
+          lectureToScheduleItem(lecture)
+        );
         
-        setClasses(allClasses);
+        setClasses(scheduleItems);
       } catch (error) {
         console.error('Failed to load classes:', error);
         setClasses([]);
@@ -70,6 +122,7 @@ const ClassesPage: React.FC<ClassesPageProps> = ({
         time: classItem.time,
         type: 'class',
         location: classItem.location || '',
+        day: classItem.day,
       },
     });
   };
@@ -174,7 +227,7 @@ const ClassesPage: React.FC<ClassesPageProps> = ({
           subtitle="Add a schedule to see your enrolled classes here."
           buttonText="Add Schedule"
           onButtonPress={() => {
-            console.log('Navigate to schedule tab');
+            router.push('/(tabs)');
           }}
         />
       ) : (
