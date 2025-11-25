@@ -29,6 +29,10 @@ app.use('/api/calendar', require('./routes/calendar'));
 app.use('/api/lectures', require('./routes/lectures'));
 app.use('/api/community', require('./routes/community'));
 app.use('/api/documents', require('./routes/document'));
+app.use('/api/classes', require('./routes/classes'));
+app.use('/api/pdfs', require('./routes/pdfs'));
+app.use('/api/transcribe', require('./routes/transcribe'));
+app.use('/api/gpa', require('./routes/gpa'));
 
 app.post("/chat", async (req, res) => {
   try {
@@ -56,6 +60,24 @@ app.post("/chat", async (req, res) => {
     console.error(error.response?.data || error.message);
     res.status(500).json({ error: "Failed to get reply from OpenAI" });
   }
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Global error handler:', err);
+  console.error('Error stack:', err.stack);
+  
+  // Don't send HTML error pages, always send JSON
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Internal server error',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+  });
 });
 
 const PORT = process.env.PORT || 4000;

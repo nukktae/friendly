@@ -85,19 +85,52 @@ function getAudioFileType(uri: string): { mimeType: string; extension: string } 
 export async function uploadAudioChunk(
   lectureId: string,
   audioUri: string,
-  userId: string
+  userId: string,
+  language: string = 'auto'
 ): Promise<{ transcript: string; liveTranscript: string }> {
   const formData = new FormData();
-  const { mimeType, extension } = getAudioFileType(audioUri);
   
-  // In React Native, FormData accepts file objects with uri, type, and name
-  formData.append('audio', {
-    uri: audioUri,
-    type: mimeType,
-    name: `chunk_${Date.now()}.${extension}`,
-  } as any);
+  // Handle web platform - audioUri might be a blob URL
+  if (typeof window !== 'undefined' && (audioUri.startsWith('blob:') || audioUri.startsWith('http://') || audioUri.startsWith('https://'))) {
+    try {
+      // Fetch the audio blob from the URI
+      const response = await fetch(audioUri);
+      const blob = await response.blob();
+      
+      // Determine mime type from blob
+      const mimeType = blob.type || 'audio/webm';
+      const extension = mimeType.includes('webm') ? 'webm' : mimeType.includes('m4a') ? 'm4a' : 'webm';
+      
+      // Create a File object from the blob
+      const file = new File([blob], `chunk_${Date.now()}.${extension}`, { type: mimeType });
+      formData.append('audio', file);
+    } catch (error) {
+      console.error('Error fetching audio blob for chunk:', error);
+      throw new Error('Failed to process audio chunk for upload');
+    }
+  } else {
+    // Native platforms - use React Native FormData format
+    const { mimeType, extension } = getAudioFileType(audioUri);
+    formData.append('audio', {
+      uri: audioUri,
+      type: mimeType,
+      name: `chunk_${Date.now()}.${extension}`,
+    } as any);
+  }
   
   formData.append('userId', userId);
+  formData.append('language', language);
+  
+  // DEBUG: Log everything about what we're sending
+  console.log('\n========== FRONTEND CHUNK DEBUG ==========');
+  console.log(`[uploadAudioChunk] LectureId: ${lectureId}`);
+  console.log(`[uploadAudioChunk] UserId: ${userId}`);
+  console.log(`[uploadAudioChunk] Language parameter received: "${language}"`);
+  console.log(`[uploadAudioChunk] Language type: ${typeof language}`);
+  console.log(`[uploadAudioChunk] Language === 'ko': ${language === 'ko'}`);
+  console.log(`[uploadAudioChunk] Language === 'en': ${language === 'en'}`);
+  console.log(`[uploadAudioChunk] Language === 'auto': ${language === 'auto'}`);
+  console.log('==========================================\n');
 
   const response = await fetch(`${API_BASE}/api/lectures/${lectureId}/transcribe-chunk`, {
     method: 'POST',
@@ -123,19 +156,72 @@ export async function transcribeLecture(
   lectureId: string,
   audioUri: string,
   userId: string,
-  duration: number
+  duration: number,
+  language: string = 'auto'
 ): Promise<{ transcript: string; transcriptionId: string; message: string }> {
   const formData = new FormData();
   const { mimeType, extension } = getAudioFileType(audioUri);
 
-  formData.append('audio', {
-    uri: audioUri,
-    type: mimeType,
-    name: `lecture_${lectureId}.${extension}`,
-  } as any);
+  // Handle web platform differently - need to fetch the blob and create a File
+  if (typeof window !== 'undefined' && audioUri.startsWith('blob:') || audioUri.startsWith('http://') || audioUri.startsWith('https://')) {
+    try {
+      // Fetch the audio blob from the URI
+      const response = await fetch(audioUri);
+      const blob = await response.blob();
+      
+      // Create a File object from the blob
+      const file = new File([blob], `lecture_${lectureId}.${extension}`, { type: mimeType });
+      formData.append('audio', file);
+    } catch (error) {
+      console.error('Error fetching audio blob:', error);
+      throw new Error('Failed to process audio file for upload');
+    }
+  } else {
+    // For native platforms, use the React Native FormData format
+    formData.append('audio', {
+      uri: audioUri,
+      type: mimeType,
+      name: `lecture_${lectureId}.${extension}`,
+    } as any);
+  }
+  
+  // CRITICAL: Ensure language is explicitly set - don't allow undefined/null
+  // If language is not provided, use 'auto' for auto-detection (NOT 'en')
+  const languageToSend = language && language !== '' && language !== null && language !== undefined 
+    ? language 
+    : 'auto';
   
   formData.append('userId', userId);
   formData.append('duration', duration.toString());
+  formData.append('language', languageToSend); // Explicitly append the language
+  
+  // CRITICAL CHECK: Warn if we're sending 'en' when user might want Korean
+  if (languageToSend === 'en') {
+    console.warn(`[transcribeLecture] ⚠️  WARNING: Sending language='en'. If you're speaking Korean, select Korean (한국어) in the UI!`);
+  }
+  
+  // DEBUG: Log everything about what we're sending
+  console.log('\n========== FRONTEND TRANSCRIBE DEBUG ==========');
+  console.log(`[transcribeLecture] LectureId: ${lectureId}`);
+  console.log(`[transcribeLecture] UserId: ${userId}`);
+  console.log(`[transcribeLecture] Duration: ${duration}`);
+  console.log(`[transcribeLecture] Language parameter received: "${language}"`);
+  console.log(`[transcribeLecture] Language type: ${typeof language}`);
+  console.log(`[transcribeLecture] Language === 'ko': ${language === 'ko'}`);
+  console.log(`[transcribeLecture] Language === 'en': ${language === 'en'}`);
+  console.log(`[transcribeLecture] Language === 'auto': ${language === 'auto'}`);
+  console.log(`[transcribeLecture] Language to send: "${languageToSend}"`);
+  
+  // Log FormData contents (for debugging) - Note: FormData.entries() might not work in all browsers
+  console.log(`[transcribeLecture] FormData entries (attempting to log):`);
+  try {
+    for (const [key, value] of formData.entries()) {
+      console.log(`  ${key}: ${value} (type: ${typeof value})`);
+    }
+  } catch (e) {
+    console.log(`  (Cannot iterate FormData: ${e.message})`);
+  }
+  console.log('==========================================\n');
 
   const response = await fetch(`${API_BASE}/api/lectures/${lectureId}/transcribe`, {
     method: 'POST',
@@ -157,14 +243,40 @@ export async function uploadAudio(
   lectureId: string,
   audioUri: string,
   userId: string,
-  duration: number
+  duration: number,
+  language: string = 'en'
 ): Promise<{ transcript: string; transcriptionId: string; message: string }> {
-  return transcribeLecture(lectureId, audioUri, userId, duration);
+  return transcribeLecture(lectureId, audioUri, userId, duration, language);
 }
 
 /**
  * Fetch lecture data
  */
+export async function getLectureTranscripts(
+  lectureId: string,
+  userId: string
+): Promise<{
+  success: boolean;
+  lectureId: string;
+  transcripts: Array<{
+    transcriptionId: string | null;
+    transcript: string;
+    createdAt: string | { _seconds: number; _nanoseconds: number } | { seconds: number; nanoseconds: number };
+    isCurrent: boolean;
+    isLive?: boolean;
+  }>;
+  count: number;
+}> {
+  const response = await fetch(`${API_BASE}/api/lectures/${lectureId}/transcripts?userId=${userId}`);
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch transcripts');
+  }
+  
+  return await response.json();
+}
+
 export async function getLecture(lectureId: string, userId: string): Promise<Lecture> {
   const response = await fetch(`${API_BASE}/api/lectures/${lectureId}?userId=${userId}`, {
     method: 'GET',
@@ -288,6 +400,27 @@ export async function toggleChecklistItem(
 /**
  * Chat with global chatbot about lectures
  */
+export async function chatWithTranscript(
+  transcriptionId: string,
+  userId: string,
+  question: string
+): Promise<{ success: boolean; chatId: string; answer: string; transcriptionId: string; lectureId: string; lecturesReferenced: string[] }> {
+  const response = await fetch(`${API_BASE}/api/lectures/transcription/${transcriptionId}/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ userId, question }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to chat with transcript');
+  }
+
+  return await response.json();
+}
+
 export async function chatWithLectures(
   userId: string,
   question: string
@@ -458,19 +591,117 @@ export async function listLectures(
 }
 
 /**
- * Delete a lecture
+ * Update/edit a lecture
  */
-export async function deleteLecture(lectureId: string, userId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/api/lectures/${lectureId}?userId=${userId}`, {
-    method: 'DELETE',
+export async function updateLecture(
+  lectureId: string,
+  userId: string,
+  updates: {
+    title?: string;
+    description?: string;
+    tags?: string[];
+    day?: string;
+    time?: string;
+    place?: string;
+    status?: 'draft' | 'recording' | 'processing' | 'completed' | 'failed';
+  }
+): Promise<{ success: boolean; lectureId: string; lecture: Lecture }> {
+  const response = await fetch(`${API_BASE}/api/lectures/${lectureId}`, {
+    method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
     },
+    body: JSON.stringify({
+      userId,
+      ...updates,
+    }),
   });
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to delete lecture');
+    throw new Error(error.error || 'Failed to update lecture');
+  }
+
+  return await response.json();
+}
+
+/**
+ * Delete a lecture
+ */
+export async function deleteLecture(lectureId: string, userId: string): Promise<void> {
+  console.log('[deleteLecture] Starting delete function');
+  console.log('[deleteLecture] lectureId:', lectureId);
+  console.log('[deleteLecture] userId:', userId);
+  console.log('[deleteLecture] API_BASE:', API_BASE);
+
+  if (!lectureId || !userId) {
+    const errorMsg = `Missing required parameters: lectureId=${lectureId}, userId=${userId}`;
+    console.error('[deleteLecture] ❌', errorMsg);
+    throw new Error('Lecture ID and User ID are required');
+  }
+
+  const url = `${API_BASE}/api/lectures/${lectureId}?userId=${userId}`;
+  console.log('[deleteLecture] Request URL:', url);
+  console.log('[deleteLecture] Making DELETE request...');
+
+  try {
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('[deleteLecture] Response status:', response.status);
+    console.log('[deleteLecture] Response ok:', response.ok);
+    console.log('[deleteLecture] Response headers:', Object.fromEntries(response.headers.entries()));
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to delete lecture';
+      let errorData = null;
+      
+      try {
+        errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+        console.error('[deleteLecture] Error response data:', errorData);
+      } catch (e) {
+        const text = await response.text();
+        console.error('[deleteLecture] Failed to parse error response. Raw text:', text);
+        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      }
+      
+      console.error('[deleteLecture] ❌ Delete failed:', errorMessage);
+      console.error('[deleteLecture] Status code:', response.status);
+      throw new Error(errorMessage);
+    }
+
+    // Check if response has content before trying to parse
+    const contentType = response.headers.get('content-type');
+    console.log('[deleteLecture] Response content-type:', contentType);
+    
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        const data = await response.json();
+        console.log('[deleteLecture] ✅ Delete successful. Response:', data);
+      } catch (e) {
+        // Response might be empty, which is fine for DELETE
+        console.log('[deleteLecture] ✅ Delete successful (empty response)');
+      }
+    } else {
+      console.log('[deleteLecture] ✅ Delete successful (no JSON response)');
+    }
+  } catch (error: any) {
+    console.error('[deleteLecture] ❌ Fetch error:', error);
+    console.error('[deleteLecture] Error name:', error.name);
+    console.error('[deleteLecture] Error message:', error.message);
+    console.error('[deleteLecture] Error stack:', error.stack);
+    
+    // Re-throw with more context if it's not already an Error with message
+    if (error.message) {
+      throw error;
+    } else {
+      throw new Error(`Network error: ${error.message || 'Failed to connect to server'}`);
+    }
   }
 }
 

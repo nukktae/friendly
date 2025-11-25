@@ -22,7 +22,8 @@ export function ClassNotesSection({
   onNotePress,
   onCreateNote,
 }: ClassNotesSectionProps) {
-  if (isLoading) {
+  // Show loading only if actively loading AND no notes yet
+  if (isLoading && notes.length === 0) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="small" color="#6B7C32" />
@@ -31,7 +32,8 @@ export function ClassNotesSection({
     );
   }
 
-  if (!notes.length) {
+  // Show empty state if not loading and no notes
+  if (!isLoading && !notes.length) {
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyTitle}>Keep your notes here</Text>

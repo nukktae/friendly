@@ -28,6 +28,8 @@ function AppWithOverlay() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="class/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="assignment/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="assignment/create" options={{ headerShown: false }} />
+        <Stack.Screen name="post/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="record" options={{ headerShown: false }} />
         <Stack.Screen name="schedule-review" options={{ headerShown: false }} />
         

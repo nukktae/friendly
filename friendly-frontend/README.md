@@ -1,50 +1,38 @@
-# Welcome to your Expo app 👋
+# Friendly Frontend
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Expo Router app that routes through thin screens under `app/` and keeps the bulk of UI/business logic under `src/`.
 
-## Get started
+## Project layout
 
-1. Install dependencies
+- `app/` – Expo Router entry points. Each route file is a light wrapper that renders a screen from `src/screens`. Tabs live in `app/(tabs)/`.
+- `src/` – Actual app code:
+  - `screens/` – Screen components (with barrel export). See `src/screens/README.md`.
+  - `components/` – Reusable UI pieces grouped by domain (common, schedule, ui, etc.). See `src/components/README.md`.
+  - `services/` – Business logic and API integration by domain. See `src/services/README.md`.
+  - `types/` – Shared TypeScript types with a barrel export. See `src/types/README.md`.
+  - `config/` – Environment and Firebase setup.
+  - `context/`, `hooks/`, `constants/`, `lib/`, `data/` – App state, custom hooks, theme/constants, utilities, and mock data.
 
-   ```bash
-   npm install
-   ```
+## Path aliases
 
-2. Start the app
+Configured in `tsconfig.json`:
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```ts
+"@/*": ["./*"],
+"@/src/*": ["./src/*"]
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Use `@/src/...` for imports from `src` in both `app` routes and `src` code (e.g., `import { Button } from '@/src/components/ui/button'`).
 
-## Learn more
+## Getting started
 
-To learn more about developing your project with Expo, look at the following resources:
+```bash
+npm install
+npx expo start
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Conventions
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Keep `app/` routes thin; put logic and UI composition in `src/screens` and below.
+- Prefer barrel exports for screens/services/types; import components directly by path.
+- Follow feature-based grouping inside `src` and add to the relevant README when expanding structure.

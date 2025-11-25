@@ -424,67 +424,7 @@ const SchedulePage: React.FC<SchedulePageProps> = () => {
       </View>
 
       {/* Headline */}
-      <Text style={styles.emptyTitle}>No schedules yet. Let's get you started.</Text>
-      
-      {/* Add Schedule Button */}
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity 
-          style={styles.addButton}
-          onPress={showPopover ? hidePopoverMenu : showPopoverMenu}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={20} color="white" />
-          <Text style={styles.addButtonText}>Add Schedule</Text>
-        </TouchableOpacity>
-
-        {/* Floating Popover Menu */}
-        {showPopover && (
-          <Animated.View 
-            style={[
-              styles.popoverContainer,
-              {
-                opacity: popoverAnimation,
-                transform: [
-                  {
-                    scale: popoverAnimation.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.8, 1],
-                    }),
-                  },
-                  {
-                    translateY: popoverAnimation.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [10, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={styles.popover}>
-              <TouchableOpacity 
-                style={styles.popoverItem}
-                onPress={handleChooseFromGallery}
-              >
-                <Ionicons name="images" size={20} color="#2d5a27" />
-                <Text style={styles.popoverItemText}>Choose from Gallery</Text>
-              </TouchableOpacity>
-              
-              <View style={styles.popoverSeparator} />
-              
-              <TouchableOpacity 
-                style={styles.popoverItem}
-                onPress={handleImportFromGoogle}
-              >
-                <View style={styles.googleIconContainer}>
-                  <Ionicons name="calendar" size={12} color="#ffffff" />
-                </View>
-                <Text style={styles.popoverItemText}>Sync from Google Calendar</Text>
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        )}
-      </View>
+      <Text style={styles.emptyTitle}>No schedules yet.</Text>
     </View>
   );
 

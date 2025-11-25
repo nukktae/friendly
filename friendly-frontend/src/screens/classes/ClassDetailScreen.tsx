@@ -1,19 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useApp } from '@/src/context/AppContext';
 import {
   ClassAssignmentsSection,
   ClassFilesSection,
-  ClassNotesSection,
   ClassRecordingsSection,
 } from '@/src/components/classes';
 import {
   fetchClassAssignments,
   fetchClassFiles,
-  fetchClassNotes,
   fetchClassRecordings,
+  updateAssignment,
 } from '@/src/services/classes/classResourcesService';
-import { ClassAssignment, ClassFile, ClassNote, ClassRecording } from '@/src/types';
+import { ClassAssignment, ClassFile, ClassRecording } from '@/src/types';
+import { PDFViewer } from '@/src/components/pdf/PDFViewer';
+import { getPDF, uploadPDF } from '@/src/services/pdf/pdfService';
+import { PDFFile } from '@/src/services/pdf/pdfService';
 
 interface ClassDetailScreenProps {
   id: string;
@@ -27,7 +32,7 @@ interface ClassDetailScreenProps {
   onRecordPress?: () => void;
 }
 
-type TabKey = 'files' | 'recordings' | 'assignments' | 'notes';
+type TabKey = 'files' | 'recordings' | 'assignments';
 
 export default function ClassDetailScreen({
   id,
@@ -40,15 +45,19 @@ export default function ClassDetailScreen({
   onBack,
   onRecordPress,
 }: ClassDetailScreenProps) {
+  const router = useRouter();
+  const { user } = useApp();
   const scrollY = useRef(new Animated.Value(0)).current;
   const isMountedRef = useRef(true);
   const [activeTab, setActiveTab] = useState<TabKey>('files');
   const [files, setFiles] = useState<ClassFile[]>([]);
   const [recordings, setRecordings] = useState<ClassRecording[]>([]);
   const [assignments, setAssignments] = useState<ClassAssignment[]>([]);
-  const [notes, setNotes] = useState<ClassNote[]>([]);
   const [isLoadingResources, setIsLoadingResources] = useState(false);
   const [resourcesError, setResourcesError] = useState<string | null>(null);
+  const [isUploadingPDF, setIsUploadingPDF] = useState(false);
+  const [selectedPDF, setSelectedPDF] = useState<PDFFile | null>(null);
+  const [showPDFViewer, setShowPDFViewer] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -63,40 +72,133 @@ export default function ClassDetailScreen({
     setResourcesError(null);
 
     try {
-      const [filesData, recordingsData, assignmentsData, notesData] = await Promise.all([
-        fetchClassFiles(id),
-        fetchClassRecordings(id),
-        fetchClassAssignments(id),
-        fetchClassNotes(id),
+      const userId = user?.uid;
+      
+      // Fetch files and assignments (userId optional)
+      const [filesData, assignmentsData] = await Promise.all([
+        fetchClassFiles(id, userId),
+        fetchClassAssignments(id, userId),
       ]);
+
+      // Only fetch recordings if userId is available (required for recordings endpoint)
+      let recordingsData: ClassRecording[] = [];
+      if (userId) {
+        try {
+          recordingsData = await fetchClassRecordings(id, userId);
+        } catch (error) {
+          console.warn('Failed to fetch recordings:', error);
+          // Continue with empty recordings array
+        }
+      }
 
       if (!isMountedRef.current) return;
 
       setFiles(filesData);
       setRecordings(recordingsData);
       setAssignments(assignmentsData);
-      setNotes(notesData);
+      setResourcesError(null); // Clear any previous errors
     } catch (error) {
       if (!isMountedRef.current) return;
 
-      const message =
-        error instanceof Error ? error.message : 'Failed to load class resources';
-      setResourcesError(message);
+      // Only show error if it's not a 404 (endpoint doesn't exist)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load class resources';
+      if (!errorMessage.includes('Cannot GET') && !errorMessage.includes('404')) {
+        setResourcesError(errorMessage);
+      } else {
+        // Endpoint doesn't exist yet, silently fail
+        setResourcesError(null);
+      }
     } finally {
       if (!isMountedRef.current) return;
       setIsLoadingResources(false);
     }
-  }, [id]);
+  }, [id, user?.uid]);
 
   useEffect(() => {
     loadResources();
   }, [loadResources]);
 
+  const handleStatusUpdate = useCallback(async (
+    assignmentId: string,
+    classId: string,
+    status: ClassAssignment['status']
+  ) => {
+    if (!user?.uid) {
+      Alert.alert('Error', 'You must be logged in to update assignment status');
+      return;
+    }
+
+    try {
+      await updateAssignment(assignmentId, classId, user.uid, { status });
+      // Refresh assignments after update
+      await loadResources();
+    } catch (error) {
+      console.error('Error updating assignment status:', error);
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to update assignment status');
+    }
+  }, [user?.uid, loadResources]);
+
+  const handleAddPDF = useCallback(async () => {
+    if (!user?.uid) {
+      Alert.alert('Error', 'You must be logged in to upload PDFs');
+      return;
+    }
+
+    try {
+      // Open system file picker
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return; // User cancelled
+      }
+
+      const file = result.assets[0];
+
+      // Validate file size (50MB limit)
+      if (file.size && file.size > 50 * 1024 * 1024) {
+        Alert.alert('Error', 'File size exceeds 50MB limit');
+        return;
+      }
+
+      setIsUploadingPDF(true);
+
+      // Upload PDF directly
+      await uploadPDF(file.uri, user.uid, {
+        title: file.name.replace(/\.pdf$/i, ''),
+        classId: id,
+      });
+
+      // Reload resources to show the new file
+      await loadResources();
+
+      Alert.alert('Success', 'PDF uploaded successfully');
+    } catch (error: any) {
+      console.error('Error uploading PDF:', error);
+      
+      let errorMessage = error.message || 'Failed to upload PDF';
+      
+      // Provide more helpful messages for specific error types
+      if (errorMessage.includes('bucket') || errorMessage.includes('Storage')) {
+        errorMessage = `Storage Error\n\n${errorMessage}`;
+      } else if (errorMessage.includes('Permission denied') || errorMessage.includes('403')) {
+        errorMessage = `Permission Denied\n\n${errorMessage}`;
+      } else if (errorMessage.includes('does not exist') || errorMessage.includes('404')) {
+        errorMessage = `Storage Not Found\n\n${errorMessage}`;
+      }
+      
+      Alert.alert('Upload Failed', errorMessage);
+    } finally {
+      setIsUploadingPDF(false);
+    }
+  }, [user?.uid, id, loadResources]);
+
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'files', label: `Files (${files.length})` },
     { key: 'recordings', label: `Recordings (${recordings.length})` },
     { key: 'assignments', label: `Assignments (${assignments.length})` },
-    { key: 'notes', label: `Notes (${notes.length})` },
   ];
 
   // Calculate deadline
@@ -128,12 +230,6 @@ export default function ClassDetailScreen({
         <Text style={styles.topHeaderTitle} numberOfLines={1}>{title}</Text>
       </Animated.View>
 
-      {/* Floating Action Button */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity style={[styles.fab, styles.fabPrimary]}>
-          <Ionicons name="add" size={24} color="#ffffff" />
-        </TouchableOpacity>
-      </View>
 
       <Animated.ScrollView
         style={styles.scrollView}
@@ -147,36 +243,40 @@ export default function ClassDetailScreen({
         {/* Compact Header */}
         <View style={styles.compactHeader}>
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={22} color="#1f2937" />
+            <Ionicons name="arrow-back" size={20} color="#1f2937" />
           </TouchableOpacity>
           
           <View style={styles.headerContent}>
-            <View style={[styles.typeChip, { backgroundColor: color || '#6B7C32' }]}>
-              <Text style={styles.typeChipText}>{type.toUpperCase()}</Text>
+            <View style={styles.titleRow}>
+              <View style={[styles.typeChip, { backgroundColor: color || '#6B7C32' }]}>
+                <Text style={styles.typeChipText}>{(type || 'CLASS').toUpperCase()}</Text>
+              </View>
+              <Text style={styles.compactTitle}>{title}</Text>
             </View>
-            <Text style={styles.compactTitle}>{title}</Text>
             
             {/* Compact Info Row */}
             <View style={styles.infoRow}>
               <View style={styles.infoItem}>
-                <Ionicons name="time-outline" size={16} color="#6b7280" />
+                <Ionicons name="time-outline" size={14} color="#6b7280" />
                 <Text style={styles.infoText}>{time}</Text>
               </View>
-              <View style={styles.infoDivider} />
               {location && (
                 <>
+                  <View style={styles.infoDivider} />
                   <View style={styles.infoItem}>
-                    <Ionicons name="location-outline" size={16} color="#6b7280" />
+                    <Ionicons name="location-outline" size={14} color="#6b7280" />
                     <Text style={styles.infoText}>{location}</Text>
                   </View>
-                  <View style={styles.infoDivider} />
                 </>
               )}
               {instructor && (
-                <View style={styles.infoItem}>
-                  <Ionicons name="person-outline" size={16} color="#6b7280" />
-                  <Text style={styles.infoText}>{instructor}</Text>
-                </View>
+                <>
+                  <View style={styles.infoDivider} />
+                  <View style={styles.infoItem}>
+                    <Ionicons name="person-outline" size={14} color="#6b7280" />
+                    <Text style={styles.infoText}>{instructor}</Text>
+                  </View>
+                </>
               )}
             </View>
           </View>
@@ -209,34 +309,50 @@ export default function ClassDetailScreen({
         {/* Quick Actions */}
         <View style={styles.quickActions}>
           <TouchableOpacity 
-            style={styles.actionCard}
+            style={styles.actionButton}
             onPress={onRecordPress}
+            activeOpacity={0.7}
           >
-            <View style={[styles.actionIcon, { backgroundColor: '#fee2e2' }]}>
-              <Ionicons name="mic" size={20} color="#ef4444" />
-            </View>
-            <Text style={styles.actionLabel}>Record</Text>
+            <Ionicons name="mic" size={18} color="#ef4444" />
+            <Text style={styles.actionButtonText}>Record</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionCard}>
-            <View style={[styles.actionIcon, { backgroundColor: '#dbeafe' }]}>
-              <Ionicons name="document-attach" size={20} color="#3b82f6" />
-            </View>
-            <Text style={styles.actionLabel}>Add PDF</Text>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={handleAddPDF}
+            activeOpacity={0.7}
+            disabled={isUploadingPDF}
+          >
+            {isUploadingPDF ? (
+              <ActivityIndicator size="small" color="#3b82f6" />
+            ) : (
+              <Ionicons name="document-attach" size={18} color="#3b82f6" />
+            )}
+            <Text style={styles.actionButtonText}>
+              {isUploadingPDF ? 'Uploading...' : 'Add PDF'}
+            </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionCard}>
-            <View style={[styles.actionIcon, { backgroundColor: '#fef3c7' }]}>
-              <Ionicons name="create" size={20} color="#f59e0b" />
-            </View>
-            <Text style={styles.actionLabel}>Assignment</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionCard}>
-            <View style={[styles.actionIcon, { backgroundColor: '#e9d5ff' }]}>
-              <Ionicons name="notifications" size={20} color="#a855f7" />
-            </View>
-            <Text style={styles.actionLabel}>Remind</Text>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            activeOpacity={0.7}
+            onPress={() => {
+              router.push({
+                pathname: '/assignment/create',
+                params: { 
+                  classId: id,
+                  // Pass current screen params so we can navigate back properly
+                  title,
+                  time,
+                  type,
+                  location,
+                  color,
+                },
+              });
+            }}
+          >
+            <Ionicons name="create" size={18} color="#f59e0b" />
+            <Text style={styles.actionButtonText}>Assignment</Text>
           </TouchableOpacity>
         </View>
 
@@ -271,7 +387,35 @@ export default function ClassDetailScreen({
         {/* Content */}
         <View style={styles.tabContent}>
           {activeTab === 'files' && (
-            <ClassFilesSection files={files} isLoading={isLoadingResources} />
+            <ClassFilesSection 
+              files={files} 
+              isLoading={isLoadingResources}
+              onFilePress={async (file) => {
+                try {
+                  const userId = user?.uid;
+                  if (!userId) {
+                    Alert.alert('Error', 'You must be logged in to view PDFs');
+                    return;
+                  }
+                  
+                  console.log('Opening PDF:', file.id);
+                  const pdf = await getPDF(file.id, userId);
+                  console.log('PDF loaded:', pdf);
+                  
+                  if (!pdf) {
+                    Alert.alert('Error', 'PDF not found');
+                    return;
+                  }
+                  
+                  setSelectedPDF(pdf);
+                  setShowPDFViewer(true);
+                } catch (error: any) {
+                  console.error('Error loading PDF:', error);
+                  Alert.alert('Error', error.message || 'Failed to load PDF');
+                }
+              }}
+              onUploadPress={handleAddPDF}
+            />
           )}
 
           {activeTab === 'recordings' && (
@@ -286,16 +430,33 @@ export default function ClassDetailScreen({
             <ClassAssignmentsSection
               assignments={assignments}
               isLoading={isLoadingResources}
+              onStatusUpdate={handleStatusUpdate}
+              classId={id}
             />
-          )}
-
-          {activeTab === 'notes' && (
-            <ClassNotesSection notes={notes} isLoading={isLoadingResources} />
           )}
         </View>
 
         <View style={{ height: 100 }} />
       </Animated.ScrollView>
+
+      {/* PDF Viewer */}
+      {selectedPDF && user?.uid && (
+        <PDFViewer
+          visible={showPDFViewer}
+          pdf={selectedPDF}
+          userId={user.uid}
+          onClose={() => {
+            setShowPDFViewer(false);
+            setSelectedPDF(null);
+          }}
+          onUpdate={() => {
+            loadResources();
+            if (selectedPDF) {
+              getPDF(selectedPDF.id, user.uid).then(setSelectedPDF).catch(console.error);
+            }
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -315,7 +476,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 50,
+    paddingTop: Platform.OS === 'ios' ? 44 : 20,
     zIndex: 100,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
@@ -335,72 +496,57 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1f2937',
   },
-  fabContainer: {
-    position: 'absolute',
-    bottom: 30,
-    right: 20,
-    zIndex: 1000,
-  },
-  fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  fabPrimary: {
-    backgroundColor: '#6B7C32',
-  },
   scrollView: {
     flex: 1,
   },
   compactHeader: {
-    paddingTop: 60,
+    paddingTop: Platform.OS === 'ios' ? 44 : 20,
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 16,
     backgroundColor: '#ffffff',
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#f9fafb',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
     alignSelf: 'flex-start',
   },
   headerContent: {
-    gap: 12,
+    gap: 10,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
   },
   typeChip: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   typeChipText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: '#ffffff',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   compactTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     color: '#111827',
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
+    flex: 1,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
   },
   infoItem: {
     flexDirection: 'row',
@@ -410,20 +556,20 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 13,
     color: '#6b7280',
-    fontWeight: '500',
+    fontWeight: '400',
   },
   infoDivider: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
+    width: 2,
+    height: 2,
+    borderRadius: 1,
     backgroundColor: '#d1d5db',
   },
   deadlineCard: {
     marginHorizontal: 20,
-    marginBottom: 20,
-    padding: 16,
+    marginBottom: 16,
+    padding: 14,
     backgroundColor: '#f9fafb',
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#f3f4f6',
   },
@@ -432,12 +578,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deadlineIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   deadlineInfo: {
     flex: 1,
@@ -451,61 +597,62 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   deadlineDate: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     color: '#111827',
   },
   daysChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     backgroundColor: '#ffffff',
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e5e7eb',
   },
   daysText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: '#6B7C32',
   },
   quickActions: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    marginBottom: 24,
-    gap: 12,
-  },
-  actionCard: {
-    flex: 1,
-    alignItems: 'center',
+    marginBottom: 20,
     gap: 8,
   },
-  actionIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    justifyContent: 'center',
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#f3f4f6',
   },
-  actionLabel: {
-    fontSize: 12,
+  actionButtonText: {
+    fontSize: 13,
     fontWeight: '600',
-    color: '#6b7280',
+    color: '#374151',
   },
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    marginBottom: 20,
-    gap: 24,
+    marginBottom: 16,
+    gap: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
   },
   tab: {
-    paddingBottom: 12,
+    paddingBottom: 10,
     position: 'relative',
   },
   activeTab: {},
   tabText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     color: '#9ca3af',
   },

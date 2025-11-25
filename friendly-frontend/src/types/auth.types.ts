@@ -18,6 +18,8 @@ export interface UserProfile {
   updatedAt: Date;
   onboardingCompleted: boolean;
   enrolledClasses: string[];
+  totalCreditsRequired?: number;
+  major?: string;
 }
 
 export interface OnboardingData {

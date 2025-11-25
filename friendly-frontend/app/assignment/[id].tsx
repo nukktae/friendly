@@ -18,7 +18,17 @@ export default function AssignmentDetailRoute() {
   } = params;
 
   const handleBack = () => {
-    router.back();
+    // Try to go back, if that fails navigate to explore tab
+    try {
+      if (router.canGoBack && router.canGoBack()) {
+        router.back();
+      } else {
+        router.push('/(tabs)/explore');
+      }
+    } catch (error) {
+      // Fallback to explore tab if navigation fails
+      router.push('/(tabs)/explore');
+    }
   };
 
   return (

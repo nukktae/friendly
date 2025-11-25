@@ -468,7 +468,301 @@ async function addPostComment(postId, commentData) {
   return comment;
 }
 
+// PDF/Class Files Collection
+const CLASS_FILES = 'classFiles';
+
+async function createPDFFile(pdfData) {
+  const fileId = pdfData.id || `pdf_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  
+  const fileDoc = {
+    id: fileId,
+    userId: pdfData.userId,
+    classId: pdfData.classId || null,
+    title: pdfData.title,
+    originalFilename: pdfData.originalFilename,
+    storagePath: pdfData.storagePath,
+    downloadUrl: pdfData.downloadUrl,
+    size: pdfData.size,
+    pages: pdfData.pages || 0,
+    fileType: 'pdf',
+    extractedText: pdfData.extractedText || null,
+    analysis: pdfData.analysis || null,
+    annotations: pdfData.annotations || [],
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await getDb().collection(CLASS_FILES).doc(fileId).set(fileDoc);
+  return fileId;
+}
+
+async function getPDFFileById(fileId, userId) {
+  const doc = await getDb().collection(CLASS_FILES).doc(fileId).get();
+  if (!doc.exists) {
+    return null;
+  }
+  const data = doc.data();
+  // Verify ownership
+  if (data.userId !== userId) {
+    throw new Error('Unauthorized: You can only access your own files');
+  }
+  return data;
+}
+
+async function updatePDFFile(fileId, userId, updates) {
+  // Verify ownership
+  const existing = await getPDFFileById(fileId, userId);
+  if (!existing) {
+    throw new Error('File not found');
+  }
+
+  await getDb().collection(CLASS_FILES).doc(fileId).update({
+    ...updates,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return await getPDFFileById(fileId, userId);
+}
+
+async function deletePDFFile(fileId, userId) {
+  // Verify ownership
+  const existing = await getPDFFileById(fileId, userId);
+  if (!existing) {
+    throw new Error('File not found');
+  }
+
+  await getDb().collection(CLASS_FILES).doc(fileId).delete();
+}
+
+async function listClassFiles(classId, userId) {
+  try {
+    if (!classId || !userId) {
+      return [];
+    }
+
+    // First, try with orderBy (requires composite index)
+    try {
+      const query = getDb().collection(CLASS_FILES)
+        .where('userId', '==', userId)
+        .where('classId', '==', classId)
+        .orderBy('createdAt', 'desc');
+      
+      const snapshot = await query.get();
+      return snapshot.docs.map(doc => doc.data());
+    } catch (orderByError) {
+      // If orderBy fails (likely missing index), fall back to query without orderBy
+      // and sort in memory
+      console.warn('OrderBy failed, falling back to in-memory sort:', orderByError.message);
+      const query = getDb().collection(CLASS_FILES)
+        .where('userId', '==', userId)
+        .where('classId', '==', classId);
+      
+      const snapshot = await query.get();
+      const files = snapshot.docs.map(doc => doc.data());
+      
+      // Sort by createdAt in memory
+      return files.sort((a, b) => {
+        const aTime = a.createdAt?._seconds || a.createdAt?.seconds || 0;
+        const bTime = b.createdAt?._seconds || b.createdAt?.seconds || 0;
+        return bTime - aTime; // desc order
+      });
+    }
+  } catch (error) {
+    console.error('Error in listClassFiles:', error);
+    // Return empty array instead of throwing to prevent 500 errors
+    return [];
+  }
+}
+
+async function listUserPDFs(userId, classId = null) {
+  let query = getDb().collection(CLASS_FILES)
+    .where('userId', '==', userId);
+  
+  if (classId) {
+    query = query.where('classId', '==', classId);
+  } else {
+    // Get standalone PDFs (no classId)
+    query = query.where('classId', '==', null);
+  }
+  
+  query = query.orderBy('createdAt', 'desc');
+  
+  const snapshot = await query.get();
+  return snapshot.docs.map(doc => doc.data());
+}
+
+async function savePDFChatMessage(fileId, userId, question, answer, pageReferences = []) {
+  const chatId = `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  
+  const chatData = {
+    chatId,
+    fileId,
+    userId,
+    question,
+    answer,
+    pageReferences,
+    timestamp: now,
+  };
+
+  await getDb().collection('pdfChats').doc(chatId).set(chatData);
+  return chatData;
+}
+
+async function getPDFChatHistory(fileId, userId, limit = 50) {
+  try {
+    // Try query with orderBy first (requires index)
+    const query = getDb().collection('pdfChats')
+      .where('fileId', '==', fileId)
+      .where('userId', '==', userId)
+      .orderBy('timestamp', 'desc')
+      .limit(limit);
+    
+    const snapshot = await query.get();
+    return snapshot.docs.map(doc => doc.data());
+  } catch (orderByError) {
+    // If orderBy fails (missing index), fall back to query without orderBy
+    // and sort in memory
+    console.warn('OrderBy failed for PDF chat history, falling back to in-memory sort:', orderByError.message);
+    
+    const query = getDb().collection('pdfChats')
+      .where('fileId', '==', fileId)
+      .where('userId', '==', userId);
+    
+    const snapshot = await query.get();
+    const chats = snapshot.docs.map(doc => doc.data());
+    
+    // Sort by timestamp in memory (descending order)
+    const sortedChats = chats.sort((a, b) => {
+      const aTime = a.timestamp?._seconds || a.timestamp?.seconds || 0;
+      const bTime = b.timestamp?._seconds || b.timestamp?.seconds || 0;
+      return bTime - aTime; // desc order (newest first)
+    });
+    
+    // Apply limit after sorting
+    return sortedChats.slice(0, limit);
+  }
+}
+
+// Assignments Collection
+const ASSIGNMENTS = 'assignments';
+
+async function createAssignment(assignmentData) {
+  const assignmentId = assignmentData.id || `assignment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  
+  // Valid status values
+  const validStatuses = ['not_started', 'in_progress', 'completed'];
+  const status = assignmentData.status && validStatuses.includes(assignmentData.status) 
+    ? assignmentData.status 
+    : 'not_started';
+  
+  const assignmentDoc = {
+    id: assignmentId,
+    userId: assignmentData.userId,
+    classId: assignmentData.classId || null,
+    title: assignmentData.title,
+    description: assignmentData.description || '',
+    type: assignmentData.type || 'other',
+    dueDate: assignmentData.dueDate || null,
+    status: status,
+    createdAt: now,
+    updatedAt: now,
+  };
+  
+  await getDb().collection(ASSIGNMENTS).doc(assignmentId).set(assignmentDoc);
+  return assignmentId;
+}
+
+async function getAssignmentById(assignmentId, userId) {
+  const doc = await getDb().collection(ASSIGNMENTS).doc(assignmentId).get();
+  if (!doc.exists) {
+    throw new Error('Assignment not found');
+  }
+  const data = doc.data();
+  if (data.userId !== userId) {
+    throw new Error('Unauthorized: Assignment belongs to another user');
+  }
+  return { id: doc.id, ...data };
+}
+
+async function updateAssignment(assignmentId, userId, updates) {
+  await getAssignmentById(assignmentId, userId); // Verify ownership
+  
+  // Validate status if it's being updated
+  if (updates.status !== undefined) {
+    const validStatuses = ['not_started', 'in_progress', 'completed'];
+    if (!validStatuses.includes(updates.status)) {
+      throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+    }
+  }
+  
+  await getDb().collection(ASSIGNMENTS).doc(assignmentId).update({
+    ...updates,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+async function deleteAssignment(assignmentId, userId) {
+  await getAssignmentById(assignmentId, userId); // Verify ownership
+  await getDb().collection(ASSIGNMENTS).doc(assignmentId).delete();
+}
+
+async function listUserAssignments(userId, limit = 100) {
+  try {
+    const q = await getDb().collection(ASSIGNMENTS)
+      .where('userId', '==', userId)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    return q.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    if (error.message && error.message.includes('index')) {
+      const q = await getDb().collection(ASSIGNMENTS)
+        .where('userId', '==', userId)
+        .limit(limit)
+        .get();
+      const assignments = q.docs.map(d => ({ id: d.id, ...d.data() }));
+      return assignments.sort((a, b) => {
+        const aTime = a.createdAt?._seconds || a.createdAt?.seconds || 0;
+        const bTime = b.createdAt?._seconds || b.createdAt?.seconds || 0;
+        return bTime - aTime;
+      });
+    }
+    throw error;
+  }
+}
+
+async function listClassAssignments(classId, userId, limit = 100) {
+  try {
+    const q = await getDb().collection(ASSIGNMENTS)
+      .where('userId', '==', userId)
+      .where('classId', '==', classId)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    return q.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    if (error.message && error.message.includes('index')) {
+      const q = await getDb().collection(ASSIGNMENTS)
+        .where('userId', '==', userId)
+        .where('classId', '==', classId)
+        .limit(limit)
+        .get();
+      const assignments = q.docs.map(d => ({ id: d.id, ...d.data() }));
+      return assignments.sort((a, b) => {
+        const aTime = a.createdAt?._seconds || a.createdAt?.seconds || 0;
+        const bTime = b.createdAt?._seconds || b.createdAt?.seconds || 0;
+        return bTime - aTime;
+      });
+    }
+    throw error;
+  }
+}
+
 module.exports = {
+  getDb,
   createUserProfile,
   getUserProfile,
   updateUserProfile,
@@ -497,6 +791,22 @@ module.exports = {
   deleteCommunityPost,
   togglePostLike,
   addPostComment,
+  // PDF/Class Files functions
+  createPDFFile,
+  getPDFFileById,
+  updatePDFFile,
+  deletePDFFile,
+  listClassFiles,
+  listUserPDFs,
+  savePDFChatMessage,
+  getPDFChatHistory,
+  // Assignment functions
+  createAssignment,
+  getAssignmentById,
+  updateAssignment,
+  deleteAssignment,
+  listUserAssignments,
+  listClassAssignments,
 };
 
 

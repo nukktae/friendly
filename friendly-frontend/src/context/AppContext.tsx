@@ -4,6 +4,7 @@ import { FirestoreService } from "@/src/services/firestore/firestoreService";
 import tutorialService, { TutorialConfig } from "@/src/services/tutorial/tutorialService";
 import { Class, SortOption, User, UserProfile } from "@/src/types";
 import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface AppContextType {
   // Authentication
@@ -11,6 +12,7 @@ interface AppContextType {
   user: User | null;
   userProfile: UserProfile | null;
   isOnboardingComplete: boolean;
+  authInitialized: boolean;
   setIsOnboardingComplete: (completed: boolean) => void;
   loadUserProfile: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -52,6 +54,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isOnboardingComplete, setIsOnboardingComplete] = useState(false);
+  const [authInitialized, setAuthInitialized] = useState(false);
 
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
@@ -94,6 +97,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Configure Google Sign-In for mobile platforms
     AuthService.configureGoogleSignIn();
+    
+    // Check initial auth state synchronously to avoid race condition on refresh
+    const currentUser = AuthService.getCurrentUser();
+    if (currentUser) {
+      setIsAuthenticated(true);
+      setUser({
+        uid: currentUser.uid,
+        email: currentUser.email || '',
+        name: currentUser.displayName || undefined,
+      });
+    } else {
+      setIsAuthenticated(false);
+      setUser(null);
+    }
+    setAuthInitialized(true);
     
     const unsubscribe = AuthService.onAuthStateChanged(async (user: User | null) => {
       if (user) {
@@ -209,6 +227,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await AuthService.logout();
       console.log('Firebase logout successful');
       
+      // Clear saved credentials
+      try {
+        await AsyncStorage.removeItem('@remembered_credentials');
+      } catch (error) {
+        console.error('Failed to clear saved credentials:', error);
+      }
+      
       // Clear local state
       setFavorites(new Set());
       setSearchTerm("");
@@ -257,6 +282,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user,
     userProfile,
     isOnboardingComplete,
+    authInitialized,
     setIsOnboardingComplete,
     loadUserProfile,
     login,

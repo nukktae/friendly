@@ -20,10 +20,12 @@ export interface ClassRecording {
 
 export interface ClassAssignment {
   id: string;
+  classId?: string;
   title: string;
   dueDate?: string;
   description?: string;
-  status: 'pending' | 'submitted' | 'graded' | 'past_due';
+  type?: 'ppt' | 'report' | 'team-meeting' | 'exam' | 'homework' | 'project' | 'other';
+  status: 'not_started' | 'in_progress' | 'completed' | 'pending' | 'submitted' | 'graded' | 'past_due';
   submissionUrl?: string;
 }
 

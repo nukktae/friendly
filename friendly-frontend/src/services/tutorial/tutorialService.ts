@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 export interface TutorialStep {
   id: string;
@@ -18,12 +19,24 @@ export interface TutorialConfig {
   autoStart?: boolean;
 }
 
+// Helper to check if AsyncStorage is available (window exists for web)
+const isAsyncStorageAvailable = (): boolean => {
+  if (Platform.OS === 'web') {
+    return typeof window !== 'undefined';
+  }
+  return true; // Native platforms always have AsyncStorage
+};
+
 class TutorialService {
   private static instance: TutorialService;
   private completedTutorials: Set<string> = new Set();
+  private isLoading: boolean = false;
 
   private constructor() {
-    this.loadCompletedTutorials();
+    // Only load if AsyncStorage is available
+    if (isAsyncStorageAvailable()) {
+      this.loadCompletedTutorials();
+    }
   }
 
   static getInstance(): TutorialService {
@@ -34,6 +47,16 @@ class TutorialService {
   }
 
   private async loadCompletedTutorials(): Promise<void> {
+    // Double-check availability before accessing AsyncStorage
+    if (!isAsyncStorageAvailable()) {
+      return;
+    }
+
+    if (this.isLoading) {
+      return;
+    }
+
+    this.isLoading = true;
     try {
       const stored = await AsyncStorage.getItem(TUTORIAL_STORAGE_KEY);
       if (stored) {
@@ -41,11 +64,22 @@ class TutorialService {
         this.completedTutorials = new Set(completed);
       }
     } catch (error) {
-      console.error('Failed to load completed tutorials:', error);
+      // Silently fail if AsyncStorage is not available (e.g., during SSR)
+      if (error instanceof Error && error.message.includes('window is not defined')) {
+        console.warn('AsyncStorage not available (SSR), skipping tutorial load');
+      } else {
+        console.error('Failed to load completed tutorials:', error);
+      }
+    } finally {
+      this.isLoading = false;
     }
   }
 
   async markTutorialCompleted(tutorialId: string): Promise<void> {
+    if (!isAsyncStorageAvailable()) {
+      return;
+    }
+
     try {
       this.completedTutorials.add(tutorialId);
       await AsyncStorage.setItem(
@@ -62,6 +96,10 @@ class TutorialService {
   }
 
   async resetTutorial(tutorialId: string): Promise<void> {
+    if (!isAsyncStorageAvailable()) {
+      return;
+    }
+
     try {
       this.completedTutorials.delete(tutorialId);
       await AsyncStorage.setItem(
@@ -74,6 +112,10 @@ class TutorialService {
   }
 
   async resetAllTutorials(): Promise<void> {
+    if (!isAsyncStorageAvailable()) {
+      return;
+    }
+
     try {
       this.completedTutorials.clear();
       await AsyncStorage.removeItem(TUTORIAL_STORAGE_KEY);
@@ -95,10 +137,10 @@ class TutorialService {
           showSkip: true,
         },
         {
-          id: 'schedule_tab',
-          title: 'Schedule Management',
-          description: 'Tap here to view and manage your class schedule. You can add new schedules or import from Google Calendar.',
-          targetElement: 'schedule_tab',
+          id: 'gpa_tab',
+          title: 'GPA Calculator',
+          description: 'Track your academic progress, calculate your GPA, and see how many credits you need to graduate.',
+          targetElement: 'gpa_tab',
           position: 'bottom',
         },
         {
@@ -116,9 +158,9 @@ class TutorialService {
           position: 'bottom',
         },
         {
-          id: 'add_schedule',
-          title: 'Quick Actions',
-          description: 'Use the + button to quickly add new schedules, classes, or assignments.',
+          id: 'add_course',
+          title: 'Add Courses',
+          description: 'Use the + button to add courses and track your GPA. Enter your grades and credits to see your progress.',
           targetElement: 'add_button',
           position: 'top',
         },
@@ -208,5 +250,40 @@ class TutorialService {
   }
 }
 
-export default TutorialService.getInstance();
+// Lazy initialization - only create instance when actually needed
+// This prevents the constructor from running during module load/SSR
+let tutorialServiceInstance: TutorialService | null = null;
+
+const getInstance = (): TutorialService => {
+  if (!tutorialServiceInstance) {
+    tutorialServiceInstance = TutorialService.getInstance();
+  }
+  return tutorialServiceInstance;
+};
+
+export default {
+  getInstance,
+  // Expose methods directly for convenience
+  markTutorialCompleted: (tutorialId: string) => {
+    return getInstance().markTutorialCompleted(tutorialId);
+  },
+  isTutorialCompleted: (tutorialId: string) => {
+    return getInstance().isTutorialCompleted(tutorialId);
+  },
+  resetTutorial: (tutorialId: string) => {
+    return getInstance().resetTutorial(tutorialId);
+  },
+  resetAllTutorials: () => {
+    return getInstance().resetAllTutorials();
+  },
+  getDashboardTutorial: () => {
+    return getInstance().getDashboardTutorial();
+  },
+  getScheduleTutorial: () => {
+    return getInstance().getScheduleTutorial();
+  },
+  getCommunityTutorial: () => {
+    return getInstance().getCommunityTutorial();
+  },
+};
 

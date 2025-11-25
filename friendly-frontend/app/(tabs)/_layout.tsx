@@ -1,12 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 import { HapticTab } from '@/src/components/custom/haptic-tab';
 import { useApp } from '@/src/context/AppContext';
+import tutorialService from '@/src/services/tutorial/tutorialService';
 
 export default function TabLayout() {
   const { startTutorial, loadUserProfile, user, isAuthenticated } = useApp();
+  const tutorialStartedRef = useRef(false);
 
   // Load profile when user is authenticated and on tabs (not on auth pages)
   useEffect(() => {
@@ -27,11 +29,33 @@ export default function TabLayout() {
     }
   }, [isAuthenticated, user?.uid, loadUserProfile]);
 
-  // Start dashboard tutorial when user first accesses the tabs
+  // Start dashboard tutorial only once when user first accesses the tabs
+  // and only if the tutorial hasn't been completed
   useEffect(() => {
-    const timer = setTimeout(() => {
-      startTutorial('dashboard');
-    }, 1000); // Small delay to ensure UI is ready
+    // Prevent multiple calls
+    if (tutorialStartedRef.current) return;
+    
+    const timer = setTimeout(async () => {
+      try {
+        // Get the tutorial service instance to ensure it's initialized
+        const service = tutorialService.getInstance();
+        
+        // Wait a bit for AsyncStorage to load completed tutorials
+        // The service loads tutorials in its constructor, so we wait for that
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        // Check if tutorial is already completed before starting
+        const isCompleted = tutorialService.isTutorialCompleted('dashboard_tutorial');
+        
+        if (!isCompleted && !tutorialStartedRef.current) {
+          tutorialStartedRef.current = true;
+          startTutorial('dashboard');
+        }
+      } catch (error) {
+        console.error('Error checking tutorial status:', error);
+        // If there's an error, don't start the tutorial
+      }
+    }, 1500); // Small delay to ensure UI is ready and AsyncStorage has loaded
 
     return () => clearTimeout(timer);
   }, [startTutorial]);
@@ -50,18 +74,6 @@ export default function TabLayout() {
         },
       }}>
       <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Schedule',
-          tabBarIcon: ({ color, size }) => <Ionicons name="calendar" size={size || 24} color={color} />,
-        }}
-        listeners={{
-          tabPress: () => {
-            // Add tutorial targeting for schedule tab
-          },
-        }}
-      />
-      <Tabs.Screen
         name="explore"
         options={{
           title: 'Classes',
@@ -73,6 +85,18 @@ export default function TabLayout() {
         options={{
           title: 'Community',
           tabBarIcon: ({ color, size }) => <Ionicons name="people" size={size || 24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'GPA',
+          tabBarIcon: ({ color, size }) => <Ionicons name="trophy" size={size || 24} color={color} />,
+        }}
+        listeners={{
+          tabPress: () => {
+            // Add tutorial targeting for GPA tab
+          },
         }}
       />
       <Tabs.Screen

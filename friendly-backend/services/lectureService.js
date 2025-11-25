@@ -52,14 +52,36 @@ async function createLectureRecord(userId, metadata = {}) {
 
 /**
  * Transcribe audio chunk using OpenAI Whisper
+ * @param {string} audioFile - Path to audio file
+ * @param {string} language - Language code (e.g., 'en', 'ko'). If not provided or 'auto', Whisper will auto-detect the language
  */
-async function transcribeAudioChunk(audioFile) {
+async function transcribeAudioChunk(audioFile, language = null) {
   try {
-    const transcription = await openai.audio.transcriptions.create({
+    const transcriptionParams = {
       file: fs.createReadStream(audioFile),
       model: 'whisper-1',
-      language: 'en',
-    });
+    };
+    
+    // CRITICAL: When Korean is selected, explicitly set language to 'ko' to prevent translation to English
+    // When language is null/undefined/'auto', don't pass it - let Whisper auto-detect and transcribe in original language
+    // When a specific language is provided, explicitly set it to ensure transcription in that language
+    if (language && language !== 'auto' && language !== '' && language !== null && language !== undefined) {
+      transcriptionParams.language = language;
+      // Add a prompt hint for Korean to help Whisper understand we want Korean transcription, not translation
+      if (language === 'ko') {
+        transcriptionParams.prompt = '이것은 한국어 음성입니다. 한국어로 전사해주세요.';
+      }
+      console.log(`[transcribeAudioChunk] Using explicit language: ${language}`);
+    } else {
+      // For auto-detection, add a prompt to help Whisper detect Korean and transcribe in Korean
+      // This helps prevent defaulting to English translation
+      transcriptionParams.prompt = 'Please transcribe in the original language. If this is Korean speech, transcribe in Korean.';
+      console.log(`[transcribeAudioChunk] Auto-detecting language (language param: ${language})`);
+    }
+    
+    const transcription = await openai.audio.transcriptions.create(transcriptionParams);
+    const preview = transcription.text ? transcription.text.substring(0, 100) : '(empty)';
+    console.log(`[transcribeAudioChunk] Transcription result preview: ${preview}...`);
     return transcription.text;
   } catch (error) {
     console.error('Error transcribing audio chunk:', error);
@@ -69,14 +91,60 @@ async function transcribeAudioChunk(audioFile) {
 
 /**
  * Transcribe complete audio file using OpenAI Whisper
+ * @param {string} audioFile - Path to audio file
+ * @param {string} language - Language code (e.g., 'en', 'ko'). If not provided or 'auto', Whisper will auto-detect the language
  */
-async function transcribeAudio(audioFile) {
+async function transcribeAudio(audioFile, language = null) {
   try {
-    const transcription = await openai.audio.transcriptions.create({
+    console.error('\n========== WHISPER API CALL DEBUG ==========');
+    console.error(`[transcribeAudio] Function called with language parameter: ${language}`);
+    console.error(`[transcribeAudio] Language type: ${typeof language}`);
+    console.error(`[transcribeAudio] Language === null: ${language === null}`);
+    console.error(`[transcribeAudio] Language === undefined: ${language === undefined}`);
+    console.error(`[transcribeAudio] Language === 'ko': ${language === 'ko'}`);
+    console.error(`[transcribeAudio] Language === 'en': ${language === 'en'}`);
+    console.error(`[transcribeAudio] Language truthy: ${!!language}`);
+    
+    // CRITICAL WARNING: If language is 'en', Korean speech will be TRANSLATED to English
+    if (language === 'en') {
+      console.error(`[transcribeAudio] ⚠️  WARNING: Language is 'en' - Korean speech will be TRANSLATED to English, not transcribed in Korean!`);
+      console.error(`[transcribeAudio] ⚠️  If you want Korean transcription, use language='ko' or language=null (auto-detect)`);
+    }
+    
+    const transcriptionParams = {
       file: fs.createReadStream(audioFile),
       model: 'whisper-1',
-      language: 'en',
-    });
+    };
+    
+    // CRITICAL: When Korean is selected, explicitly set language to 'ko' to prevent translation to English
+    // When language is null/undefined/'auto', don't pass it - let Whisper auto-detect and transcribe in original language
+    // When a specific language is provided, explicitly set it to ensure transcription in that language
+    if (language && language !== 'auto' && language !== '' && language !== null && language !== undefined) {
+      transcriptionParams.language = language;
+      // Add a prompt hint for Korean to help Whisper understand we want Korean transcription, not translation
+      if (language === 'ko') {
+        transcriptionParams.prompt = '이것은 한국어 음성입니다. 한국어로 전사해주세요.';
+        console.log(`[transcribeAudio] ✅ Setting language to 'ko' with Korean prompt`);
+      } else {
+        console.log(`[transcribeAudio] ✅ Setting language to '${language}'`);
+      }
+    } else {
+      // For auto-detection, add a prompt to help Whisper detect Korean and transcribe in Korean
+      // This helps prevent defaulting to English translation
+      transcriptionParams.prompt = 'Please transcribe in the original language. If this is Korean speech, transcribe in Korean.';
+      console.log(`[transcribeAudio] ⚠️  Auto-detecting language (language param: ${language}) - NOT setting language parameter`);
+    }
+    
+    console.log(`[transcribeAudio] Final transcriptionParams:`, JSON.stringify({
+      model: transcriptionParams.model,
+      language: transcriptionParams.language || '(not set - auto-detect)',
+      prompt: transcriptionParams.prompt ? '(set)' : '(not set)',
+    }, null, 2));
+    
+    const transcription = await openai.audio.transcriptions.create(transcriptionParams);
+    const preview = transcription.text ? transcription.text.substring(0, 100) : '(empty)';
+    console.log(`[transcribeAudio] Transcription result preview: ${preview}...`);
+    console.log('==========================================\n');
     return transcription.text;
   } catch (error) {
     console.error('Error transcribing audio:', error);
@@ -257,6 +325,70 @@ async function chatWithLectures(userId, question) {
 }
 
 /**
+ * Chat with AI about a specific transcript (transcript-specific chatbot)
+ * Focuses only on the transcript associated with the transcriptionId
+ */
+async function chatWithTranscript(transcriptionId, userId, question) {
+  try {
+    const { getLectureByTranscriptionId } = require('./firestoreService');
+    
+    // Get the specific lecture by transcriptionId
+    const lecture = await getLectureByTranscriptionId(transcriptionId, userId);
+    
+    if (!lecture) {
+      throw new Error('Transcript not found');
+    }
+
+    if (!lecture.transcript) {
+      throw new Error('Transcript not available for this lecture');
+    }
+
+    // Build focused context from this specific transcript
+    let context = `Lecture Title: ${lecture.title || 'Untitled Lecture'}\n\n`;
+    context += `Full Transcript:\n${lecture.transcript}\n\n`;
+    
+    if (lecture.summary) {
+      context += `Summary: ${lecture.summary.title}\n`;
+      if (lecture.summary.keyPoints && lecture.summary.keyPoints.length > 0) {
+        context += `Key Points:\n${lecture.summary.keyPoints.map((point, idx) => `  ${idx + 1}. ${point}`).join('\n')}\n\n`;
+      }
+      if (lecture.summary.actionItems && lecture.summary.actionItems.length > 0) {
+        context += `Action Items:\n${lecture.summary.actionItems.map((item, idx) => `  ${idx + 1}. ${item.text}${item.checked ? ' (completed)' : ''}`).join('\n')}\n\n`;
+      }
+    }
+
+    const messages = [
+      {
+        role: 'system',
+        content: `You are an AI assistant helping a student understand a specific lecture transcript. Focus ONLY on the transcript content provided. Answer questions based solely on what was discussed in this lecture. Be precise, helpful, and reference specific parts of the transcript when relevant. If the question is not related to this transcript, politely redirect the conversation back to the lecture content.`,
+      },
+      {
+        role: 'user',
+        content: `${context}\n\nUser Question: ${question}`,
+      },
+    ];
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages,
+      temperature: 0.7,
+    });
+
+    const response = completion.choices[0].message.content;
+
+    return {
+      answer: response,
+      transcriptionId,
+      lectureId: lecture.id,
+      lectureTitle: lecture.title || 'Untitled Lecture',
+    };
+  } catch (error) {
+    console.error('Error in transcript chat:', error);
+    throw new Error(`Transcript chat failed: ${error.message}`);
+  }
+}
+
+/**
  * Update checklist items (add, edit, delete)
  * Note: Toggle (check/uncheck) has its own endpoint
  */
@@ -335,6 +467,7 @@ module.exports = {
   generateSummary,
   generateChecklist,
   chatWithLectures,
+  chatWithTranscript,
   updateChecklist,
   toggleChecklistItem,
 };

@@ -12,6 +12,8 @@ export interface Profile {
   profilePicture?: string;
   schoolVerified?: boolean;
   schoolEmail?: string;
+  studentNumber?: string;
+  major?: string;
   enrolledClasses?: string[];
   onboardingCompleted?: boolean;
   createdAt?: {
@@ -28,6 +30,8 @@ export interface UpdateProfileData {
   fullName?: string;
   nickname?: string;
   university?: string;
+  studentNumber?: string;
+  major?: string;
 }
 
 /**

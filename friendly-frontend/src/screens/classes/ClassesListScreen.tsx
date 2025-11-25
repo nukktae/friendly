@@ -1,10 +1,15 @@
 import EmptyState from '@/src/components/common/EmptyState';
+import AIAssistantFAB from '@/src/components/common/AIAssistantFAB';
 import { useApp } from '@/src/context/AppContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { ScheduleItem } from '@/src/services/schedule/scheduleAIService';
+import scheduleAIService from '@/src/services/schedule/scheduleAIService';
+import scheduleStorageService, { UserSchedule } from '@/src/services/schedule/scheduleStorageService';
+import googleCalendarService from '@/src/services/calendar/googleCalendarService';
 import { getLectures } from '@/src/services/lecture/lectureService';
 import { Lecture } from '@/src/types/lecture.types';
 
@@ -20,9 +25,18 @@ const ClassesPage: React.FC<ClassesPageProps> = ({
   const router = useRouter();
   const { userProfile, user } = useApp();
   const [classes, setClasses] = useState<ScheduleItem[]>([]);
+  const [schedules, setSchedules] = useState<UserSchedule[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [weekStart, setWeekStart] = useState<Date>(getWeekStart(new Date()));
+  const [showPopover, setShowPopover] = useState(false);
+  const [popoverAnimation] = useState(new Animated.Value(0));
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState<string>('');
+
+  const storageService = scheduleStorageService;
+  const calendarService = googleCalendarService;
+  const aiService = scheduleAIService;
 
   const weekdayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const weekdayShort = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -81,36 +95,41 @@ const ClassesPage: React.FC<ClassesPageProps> = ({
     };
   };
 
-  // Load classes from lectures API
+  // Load classes and schedules
   useEffect(() => {
-    const loadClasses = async () => {
+    const loadData = async () => {
       const userId = userProfile?.uid || user?.uid;
 
       if (!userId || userId === 'guest') {
         setIsLoading(false);
         setClasses([]);
+        setSchedules([]);
         return;
       }
 
       try {
         setIsLoading(true);
-        const response = await getLectures({ userId });
         
-        // Convert lectures to ScheduleItem format
+        // Load classes from lectures API
+        const response = await getLectures({ userId });
         const scheduleItems: ScheduleItem[] = response.lectures.map(lecture => 
           lectureToScheduleItem(lecture)
         );
-        
         setClasses(scheduleItems);
+        
+        // Load schedules
+        const userSchedules = await storageService.getUserSchedules(userId);
+        setSchedules(userSchedules || []);
       } catch (error) {
-        console.error('Failed to load classes:', error);
+        console.error('Failed to load data:', error);
         setClasses([]);
+        setSchedules([]);
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadClasses();
+    loadData();
   }, [userProfile?.uid, user?.uid]);
 
   const handleClassClick = (classItem: ScheduleItem) => {
@@ -125,6 +144,148 @@ const ClassesPage: React.FC<ClassesPageProps> = ({
         day: classItem.day,
       },
     });
+  };
+
+  const showPopoverMenu = () => {
+    setShowPopover(true);
+    Animated.spring(popoverAnimation, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const hidePopoverMenu = () => {
+    Animated.spring(popoverAnimation, {
+      toValue: 0,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowPopover(false);
+    });
+  };
+
+  const handleImageSelected = async (imageUri: string) => {
+    try {
+      setIsAnalyzing(true);
+      setAnalysisProgress('Uploading image...');
+      const userId = userProfile?.uid || user?.uid;
+      if (!userId) {
+        Alert.alert('Error', 'User ID not found. Please sign in again.');
+        return;
+      }
+      
+      setTimeout(() => setAnalysisProgress('Analyzing schedule...'), 500);
+      
+      const result = await aiService.analyzeScheduleImage(imageUri, userId);
+      
+      setAnalysisProgress('Processing results...');
+      
+      router.push({
+        pathname: '/schedule-review',
+        params: {
+          items: JSON.stringify(result.items),
+          scheduleId: result.scheduleId,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to analyze image:', error);
+      Alert.alert('Error', 'Failed to analyze your schedule image. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
+      setAnalysisProgress('');
+      hidePopoverMenu();
+    }
+  };
+
+  const handleChooseFromGallery = async () => {
+    try {
+      const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+      if (!mediaPermission.granted) {
+        const mediaResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!mediaResult.granted) {
+          Alert.alert('Permission Required', 'Photo library access is required.');
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        await handleImageSelected(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to select image. Please try again.');
+    }
+  };
+
+  const handleGoogleCalendarImport = async () => {
+    hidePopoverMenu();
+    try {
+      const isAuthenticated = await calendarService.isAuthenticated();
+      
+      if (!isAuthenticated) {
+        const signedIn = await calendarService.signInWithFallback();
+        if (!signedIn) {
+          Alert.alert(
+            'Google Calendar Setup Required', 
+            'To sync with Google Calendar, you need to set up OAuth credentials.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        return;
+      }
+
+      setIsLoading(true);
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(startDate.getDate() + 30);
+      
+      const syncedItems = await calendarService.syncFromGoogleCalendar(startDate, endDate);
+      
+      if (syncedItems.length === 0) {
+        Alert.alert('No Events Found', 'No events found in your Google Calendar for the next 30 days.');
+        return;
+      }
+
+      if (userProfile?.uid) {
+        const newSchedule: Omit<UserSchedule, 'id' | 'createdAt' | 'updatedAt'> = {
+          userId: userProfile.uid,
+          title: `Google Calendar Sync - ${new Date().toLocaleDateString()}`,
+          description: `Synced ${syncedItems.length} events from Google Calendar`,
+          items: syncedItems,
+          syncSettings: {
+            enabled: true,
+            syncDirection: 'import',
+            calendarId: 'primary',
+            lastSyncTime: new Date(),
+          },
+          isActive: true,
+        };
+
+        await storageService.saveSchedule(userProfile.uid, newSchedule);
+        
+        Alert.alert(
+          '🎉 Sync Complete!', 
+          `Successfully imported ${syncedItems.length} events from Google Calendar.`,
+          [{ text: 'Great!' }]
+        );
+        
+        // Reload data
+        const userSchedules = await storageService.getUserSchedules(userProfile.uid);
+        setSchedules(userSchedules || []);
+      }
+    } catch (error) {
+      console.error('Failed to sync from Google Calendar:', error);
+      Alert.alert('Error', 'Failed to sync from Google Calendar. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getWeekDays = () => {
@@ -220,16 +381,76 @@ const ClassesPage: React.FC<ClassesPageProps> = ({
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Loading classes...</Text>
         </View>
-      ) : classes.length === 0 ? (
-        <EmptyState
-          icon="book-outline"
-          title="No classes enrolled yet"
-          subtitle="Add a schedule to see your enrolled classes here."
-          buttonText="Add Schedule"
-          onButtonPress={() => {
-            router.push('/(tabs)');
-          }}
-        />
+      ) : classes.length === 0 && schedules.length === 0 ? (
+        <View style={styles.emptyStateContainer}>
+          <View style={styles.emptyState}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="book-outline" size={48} color="#4a4a4a" />
+            </View>
+            <Text style={styles.emptyTitle}>No classes enrolled yet</Text>
+            <Text style={styles.emptySubtitle}>Add a schedule to see your enrolled classes here.</Text>
+            
+            {/* Add Schedule Button */}
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity 
+                style={styles.addButton}
+                onPress={showPopover ? hidePopoverMenu : showPopoverMenu}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="add" size={20} color="white" />
+                <Text style={styles.addButtonText}>Add Schedule</Text>
+              </TouchableOpacity>
+
+              {/* Floating Popover Menu */}
+              {showPopover && (
+                <Animated.View 
+                  style={[
+                    styles.popoverContainer,
+                    {
+                      opacity: popoverAnimation,
+                      transform: [
+                        {
+                          scale: popoverAnimation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.8, 1],
+                          }),
+                        },
+                        {
+                          translateY: popoverAnimation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [10, 0],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <View style={styles.popover}>
+                    <TouchableOpacity 
+                      style={styles.popoverItem}
+                      onPress={handleChooseFromGallery}
+                    >
+                      <Ionicons name="images" size={20} color="#2d5a27" />
+                      <Text style={styles.popoverItemText}>Choose from Gallery</Text>
+                    </TouchableOpacity>
+                    
+                    <View style={styles.popoverSeparator} />
+                    
+                    <TouchableOpacity 
+                      style={styles.popoverItem}
+                      onPress={handleGoogleCalendarImport}
+                    >
+                      <View style={styles.googleIconContainer}>
+                        <Ionicons name="calendar" size={12} color="#ffffff" />
+                      </View>
+                      <Text style={styles.popoverItemText}>Sync from Google Calendar</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              )}
+            </View>
+          </View>
+        </View>
       ) : (
         <>
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -299,10 +520,11 @@ const ClassesPage: React.FC<ClassesPageProps> = ({
             )}
           </ScrollView>
 
-          {/* Floating Action Button */}
-          <TouchableOpacity style={styles.fab}>
-            <Ionicons name="chatbubble" size={24} color="white" />
-          </TouchableOpacity>
+          {/* AI Assistant FAB */}
+          <AIAssistantFAB 
+            scheduleData={{}} 
+            userId={userProfile?.uid || user?.uid || 'guest'}
+          />
         </>
       )}
     </View>
@@ -315,15 +537,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   header: {
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 24,
+    paddingHorizontal: 20,
+    paddingTop: 48,
+    paddingBottom: 20,
     backgroundColor: '#ffffff',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E7EB',
   },
   headerTitle: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#000000',
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#111827',
     letterSpacing: -0.5,
   },
   loadingContainer: {
@@ -511,6 +735,108 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  emptyStateContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  emptyState: {
+    alignItems: 'center',
+    maxWidth: 300,
+  },
+  iconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#f8f9fa',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
+    elevation: 4,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 12,
+    letterSpacing: -0.5,
+  },
+  emptySubtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  buttonContainer: {
+    position: 'relative',
+    alignItems: 'center',
+  },
+  addButton: {
+    backgroundColor: '#426b1f',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  addButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  popoverContainer: {
+    position: 'absolute',
+    bottom: 60,
+    alignItems: 'center',
+    width: '100%',
+  },
+  popover: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingVertical: 8,
+    minWidth: 240,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  popoverItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  popoverItemText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#000000',
+    letterSpacing: -0.2,
+  },
+  popoverSeparator: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginHorizontal: 20,
+  },
+  googleIconContainer: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    backgroundColor: '#4285f4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Removed fab style as it's now handled by AIAssistantFAB component
 });
 
 export default ClassesPage;

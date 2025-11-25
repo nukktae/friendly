@@ -58,13 +58,11 @@ export const NewPostCard: React.FC<NewPostCardProps> = ({
 
   return (
     <View style={styles.newPostCard}>
-      <View style={styles.newPostHeader}>
-        <Ionicons name="create-outline" size={20} color="#000" />
-        <Text style={styles.newPostTitle}>Create Post</Text>
-      </View>
+      <Text style={styles.newPostTitle}>Create Post</Text>
+      
       <TextInput
-        placeholder="Share your thoughts, questions, or experiences..."
-        placeholderTextColor="#999"
+        placeholder="What's on your mind?"
+        placeholderTextColor="#9CA3AF"
         value={content}
         onChangeText={onContentChange}
         multiline
@@ -79,27 +77,22 @@ export const NewPostCard: React.FC<NewPostCardProps> = ({
           <TouchableOpacity
             style={styles.removeImageButton}
             onPress={handleRemoveImage}
+            activeOpacity={0.8}
           >
-            <Ionicons name="close-circle" size={24} color="#fff" />
+            <Ionicons name="close" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Image Picker Button */}
-      <TouchableOpacity
-        style={styles.imagePickerButton}
-        onPress={handlePickImage}
-        disabled={posting}
-      >
-        <Ionicons name="image-outline" size={20} color="#666" />
-        <Text style={styles.imagePickerText}>
-          {imageUri ? 'Change Image' : 'Add Image'}
-        </Text>
-      </TouchableOpacity>
-
-      <View style={styles.categorySelector}>
-        <Text style={styles.categoryLabel}>Category:</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+      {/* Bottom Actions Row */}
+      <View style={styles.bottomActions}>
+        {/* Category Selector */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          style={styles.categoryScroll}
+          contentContainerStyle={styles.categoryScrollContent}
+        >
           {categories.filter(c => c !== 'All').map((cat) => (
             <TouchableOpacity
               key={cat}
@@ -108,6 +101,7 @@ export const NewPostCard: React.FC<NewPostCardProps> = ({
                 category === cat && styles.categoryChipActive
               ]}
               onPress={() => onCategoryChange(cat)}
+              activeOpacity={0.7}
             >
               <Text style={[
                 styles.categoryChipText,
@@ -118,28 +112,39 @@ export const NewPostCard: React.FC<NewPostCardProps> = ({
             </TouchableOpacity>
           ))}
         </ScrollView>
-      </View>
-      <View style={styles.newPostActions}>
-        <TouchableOpacity 
-          onPress={onCancel}
-          style={styles.cancelButton}
-        >
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          onPress={onSubmit}
-          style={[styles.postButton, (!content.trim() || posting) && styles.postButtonDisabled]}
-          disabled={!content.trim() || posting}
-        >
-          {posting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
+
+        {/* Action Buttons */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={styles.imageButton}
+            onPress={handlePickImage}
+            disabled={posting}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="image-outline" size={20} color={imageUri ? "#111827" : "#9CA3AF"} />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            onPress={onCancel}
+            style={styles.cancelButton}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            onPress={onSubmit}
+            style={[styles.postButton, (!content.trim() || posting) && styles.postButtonDisabled]}
+            disabled={!content.trim() || posting}
+            activeOpacity={0.8}
+          >
+            {posting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
               <Text style={styles.postButtonText}>Post</Text>
-              <Ionicons name="send" size={16} color="#fff" />
-            </>
-          )}
-        </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -147,141 +152,136 @@ export const NewPostCard: React.FC<NewPostCardProps> = ({
 
 const styles = StyleSheet.create({
   newPostCard: {
-    backgroundColor: 'white',
-    marginHorizontal: 24,
-    marginTop: 16,
-    borderRadius: 12,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  newPostHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 16,
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
   newPostTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
-    color: '#000',
+    color: '#111827',
+    letterSpacing: -0.4,
+    marginBottom: 12,
   },
   newPostInput: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 8,
-    padding: 16,
+    backgroundColor: '#FAFBFC',
+    borderRadius: 12,
+    padding: 12,
     fontSize: 15,
-    color: '#000',
-    minHeight: 100,
+    color: '#111827',
+    minHeight: 80,
+    maxHeight: 120,
     textAlignVertical: 'top',
-    marginBottom: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#E5E7EB',
+    fontWeight: '400',
+    lineHeight: 20,
   },
-  categorySelector: {
-    marginBottom: 16,
-  },
-  categoryLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#666',
-    marginBottom: 8,
+  bottomActions: {
+    gap: 10,
   },
   categoryScroll: {
-    flexDirection: 'row',
+    flexGrow: 0,
+  },
+  categoryScrollContent: {
+    paddingRight: 8,
   },
   categoryChip: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#f8f8f8',
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    marginRight: 6,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    marginRight: 8,
+    borderColor: 'transparent',
   },
   categoryChipActive: {
-    backgroundColor: '#000',
-    borderColor: '#000',
+    backgroundColor: '#111827',
+    borderColor: '#111827',
   },
   categoryChipText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
-    color: '#666',
+    color: '#6B7280',
+    letterSpacing: -0.1,
   },
   categoryChipTextActive: {
-    color: '#fff',
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
-  newPostActions: {
+  actionButtons: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
+    gap: 8,
+  },
+  imageButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FAFBFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   cancelButton: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 8,
-    backgroundColor: '#f8f8f8',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  cancelButtonText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#666',
-  },
-  postButton: {
-    flex: 2,
-    flexDirection: 'row',
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#FAFBFC',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 8,
-    backgroundColor: '#000',
-    gap: 8,
-  },
-  postButtonDisabled: {
-    opacity: 0.5,
-  },
-  postButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: 'white',
-  },
-  imagePickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#f8f8f8',
-    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    marginBottom: 16,
+    borderColor: '#E5E7EB',
   },
-  imagePickerText: {
+  cancelButtonText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#666',
+    color: '#6B7280',
+    letterSpacing: -0.1,
+  },
+  postButton: {
+    flex: 1.5,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  postButtonDisabled: {
+    opacity: 0.4,
+  },
+  postButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: -0.1,
   },
   imagePreviewContainer: {
     position: 'relative',
-    marginBottom: 16,
-    borderRadius: 8,
+    marginBottom: 12,
+    borderRadius: 12,
     overflow: 'hidden',
+    backgroundColor: '#F9FAFB',
   },
   imagePreview: {
     width: '100%',
-    height: 200,
-    backgroundColor: '#f8f8f8',
+    height: 180,
+    resizeMode: 'cover',
   },
   removeImageButton: {
     position: 'absolute',
     top: 8,
     right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 12,
-    padding: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backdropFilter: 'blur(4px)',
   },
 });
 

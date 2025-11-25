@@ -85,8 +85,8 @@ export default function ScheduleReviewRoute() {
         },
       });
     } else {
-      // Fallback to tabs if no lectures were created
-      router.replace('/(tabs)');
+      // Fallback to classes screen if no lectures were created
+      router.replace('/(tabs)/explore');
     }
   };
 

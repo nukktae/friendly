@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useAudioRecorder, RecordingPresets } from 'expo-audio';
 import { useApp } from '../../context/AppContext';
+import { Platform } from 'react-native';
 import {
   startTranscribing,
   uploadAudioChunk,
@@ -24,6 +25,8 @@ import {
   updateChecklist,
   toggleChecklistItem,
   getLecture,
+  createLecture,
+  getLectureTranscripts,
 } from '../../services/lecture/lectureService';
 import { Lecture, ActionItem } from '../../types/lecture.types';
 import LectureChatbot from '../../components/lecture/LectureChatbot';
@@ -38,6 +41,8 @@ interface RecordScreenProps {
 
 export default function RecordScreen({ lectureId: propLectureId, onBack, onSave }: RecordScreenProps) {
   const { user } = useApp();
+  console.log('[RecordScreen] Component rendered - propLectureId:', propLectureId);
+  
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -51,6 +56,13 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
   const [liveTranscript, setLiveTranscript] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   
+  // Web-specific MediaRecorder for better control
+  const webMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const webAudioChunksRef = useRef<Blob[]>([]);
+  const webStreamRef = useRef<MediaStream | null>(null);
+  const webChunkBlobsRef = useRef<Blob[]>([]); // Store chunks for live transcription
+  const lastChunkUploadTimeRef = useRef<number>(0);
+  
   // Lecture data
   const [lecture, setLecture] = useState<Lecture | null>(null);
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
@@ -58,9 +70,71 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
   const [editText, setEditText] = useState('');
   const [newItemText, setNewItemText] = useState('');
   
+  // Transcripts list
+  const [transcripts, setTranscripts] = useState<Array<{
+    transcriptionId: string | null;
+    transcript: string;
+    createdAt: string | { _seconds: number; _nanoseconds: number } | { seconds: number; nanoseconds: number };
+    isCurrent: boolean;
+    isLive?: boolean;
+  }>>([]);
+  const [isLoadingTranscripts, setIsLoadingTranscripts] = useState(false);
+  const transcriptsLoadedRef = useRef(false);
+  
+  // Debug log for state changes
+  useEffect(() => {
+    console.log('[RecordScreen] State update - isRecording:', isRecording, 'lectureId:', lectureId, 'transcripts.length:', transcripts.length, 'isLoadingTranscripts:', isLoadingTranscripts);
+  }, [isRecording, lectureId, transcripts.length, isLoadingTranscripts]);
+  
+  // Create transcripts from lecture data if API didn't return any
+  useEffect(() => {
+    if (lecture && transcriptsLoadedRef.current && transcripts.length === 0) {
+      console.log('[RecordScreen] No transcripts from API, creating from lecture data');
+      const newTranscripts = [];
+      
+      if (lecture.transcript) {
+        newTranscripts.push({
+          transcriptionId: lecture.transcriptionId || null,
+          transcript: lecture.transcript,
+          createdAt: lecture.createdAt,
+          isCurrent: true,
+        });
+      }
+      
+      // Add liveTranscript if it's different from main transcript
+      if (lecture.liveTranscript && lecture.liveTranscript !== lecture.transcript) {
+        newTranscripts.push({
+          transcriptionId: null,
+          transcript: lecture.liveTranscript,
+          createdAt: lecture.createdAt,
+          isCurrent: false,
+          isLive: true,
+        });
+      }
+      
+      if (newTranscripts.length > 0) {
+        console.log('[RecordScreen] Setting transcripts from lecture data:', newTranscripts);
+        setTranscripts(newTranscripts);
+      }
+    }
+  }, [lecture, transcripts.length]);
+  
+  // Language selection
+  const [selectedLanguage, setSelectedLanguage] = useState<'en' | 'ko' | 'auto'>('auto');
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  
+  const languages = [
+    { code: 'auto' as const, name: 'Auto-detect', flag: '🌐' },
+    { code: 'en' as const, name: 'English', flag: '🇺🇸' },
+    { code: 'ko' as const, name: '한국어', flag: '🇰🇷' },
+  ];
+  
   // Chunk upload interval
-  const chunkUploadInterval = useRef<NodeJS.Timeout | null>(null);
+  const chunkUploadInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastChunkTime = useRef<number>(0);
+  const isRecordingRef = useRef<boolean>(false);
+  const isPausedRef = useRef<boolean>(false);
+  const recordingUriRef = useRef<string | null>(null); // Store URI during recording
   
   // Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -75,17 +149,43 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Load lecture data when available
+  // Update lectureId when prop changes
   useEffect(() => {
+    console.log('[RecordScreen] propLectureId changed:', propLectureId);
+    if (propLectureId && propLectureId !== lectureId) {
+      console.log('[RecordScreen] Updating lectureId from prop:', propLectureId);
+      setLectureId(propLectureId);
+    }
+  }, [propLectureId]);
+  
+  // Load lecture data and transcripts when available
+  useEffect(() => {
+    console.log('[RecordScreen] useEffect - lectureId:', lectureId, 'user?.uid:', user?.uid);
     if (lectureId && user?.uid) {
+      console.log('[RecordScreen] Loading lecture and transcripts...');
       loadLecture();
+      loadTranscripts();
+    } else {
+      console.log('[RecordScreen] Skipping load - missing lectureId or user.uid');
+      console.log('[RecordScreen] Current state - lectureId:', lectureId, 'propLectureId:', propLectureId, 'user?.uid:', user?.uid);
     }
   }, [lectureId, user?.uid]);
+  
+  // Reload transcripts after recording stops
+  useEffect(() => {
+    console.log('[RecordScreen] Recording state changed - isRecording:', isRecording, 'lectureId:', lectureId);
+    if (!isRecording && lectureId && user?.uid) {
+      console.log('[RecordScreen] Reloading transcripts after recording stopped...');
+      loadTranscripts();
+    }
+  }, [isRecording, lectureId, user?.uid]);
 
   const loadLecture = async () => {
     if (!lectureId || !user?.uid) return;
     try {
+      console.log('[RecordScreen] Loading lecture data...');
       const data = await getLecture(lectureId, user.uid);
+      console.log('[RecordScreen] Lecture data loaded:', JSON.stringify(data, null, 2));
       setLecture(data);
       if (data.summary) {
         setActionItems(data.summary.actionItems || []);
@@ -98,8 +198,71 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
         setTranscriptionId(data.transcriptionId);
       }
     } catch (error) {
-      console.error('Error loading lecture:', error);
+      console.error('[RecordScreen] Error loading lecture:', error);
     }
+  };
+  
+  const loadTranscripts = async () => {
+    console.log('[RecordScreen] loadTranscripts called - lectureId:', lectureId, 'user?.uid:', user?.uid);
+    if (!lectureId || !user?.uid) {
+      console.log('[RecordScreen] loadTranscripts skipped - missing lectureId or user.uid');
+      transcriptsLoadedRef.current = true;
+      return;
+    }
+    setIsLoadingTranscripts(true);
+    transcriptsLoadedRef.current = false;
+    console.log('[RecordScreen] Fetching transcripts from API...');
+    try {
+      const data = await getLectureTranscripts(lectureId, user.uid);
+      console.log('[RecordScreen] API response:', JSON.stringify(data, null, 2));
+      const loadedTranscripts = data.transcripts || [];
+      console.log('[RecordScreen] Loaded transcripts count:', loadedTranscripts.length);
+      console.log('[RecordScreen] Transcripts data:', loadedTranscripts);
+      setTranscripts(loadedTranscripts);
+      transcriptsLoadedRef.current = true;
+      console.log('[RecordScreen] Transcripts state updated');
+    } catch (error) {
+      console.error('[RecordScreen] Error loading transcripts:', error);
+      setTranscripts([]);
+      transcriptsLoadedRef.current = true;
+    } finally {
+      setIsLoadingTranscripts(false);
+      console.log('[RecordScreen] Loading complete');
+    }
+  };
+  
+  const formatDate = (timestamp: string | { _seconds: number; _nanoseconds: number } | { seconds: number; nanoseconds: number }): string => {
+    let date: Date;
+    if (typeof timestamp === 'string') {
+      date = new Date(timestamp);
+    } else {
+      const seconds = (timestamp as any)._seconds || (timestamp as any).seconds || 0;
+      date = new Date(seconds * 1000);
+    }
+    
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+  };
+  
+  const formatTimestampTime = (timestamp: string | { _seconds: number; _nanoseconds: number } | { seconds: number; nanoseconds: number }): string => {
+    let date: Date;
+    if (typeof timestamp === 'string') {
+      date = new Date(timestamp);
+    } else {
+      const seconds = (timestamp as any)._seconds || (timestamp as any).seconds || 0;
+      date = new Date(seconds * 1000);
+    }
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   };
 
   useEffect(() => {
@@ -171,6 +334,14 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
       duration: 800,
       useNativeDriver: true,
     }).start();
+
+    // Cleanup: Clear interval on unmount
+    return () => {
+      if (chunkUploadInterval.current) {
+        clearInterval(chunkUploadInterval.current);
+        chunkUploadInterval.current = null;
+      }
+    };
   }, []);
 
   const formatTime = (seconds: number) => {
@@ -179,47 +350,289 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const uploadChunk = async (audioBlob?: Blob) => {
+    if (!lectureId || !user?.uid || !isRecordingRef.current || isPausedRef.current) {
+      return;
+    }
+
+    try {
+      let blobToUpload: Blob | null = null;
+
+      if (Platform.OS === 'web') {
+        // On web, use the provided blob or get from chunks
+        if (audioBlob) {
+          blobToUpload = audioBlob;
+        } else if (webChunkBlobsRef.current.length > 0) {
+          // Combine recent chunks (last 10 seconds worth)
+          // MediaRecorder collects data every 1 second, so last 10 chunks = ~10 seconds
+          const recentChunks = webChunkBlobsRef.current.slice(-10); // Last 10 chunks (~10 seconds)
+          if (recentChunks.length === 0) {
+            return; // No chunks to upload
+          }
+          blobToUpload = new Blob(recentChunks, { type: 'audio/webm' });
+          
+          // Don't clear chunks - we want overlapping windows for better transcription
+          // The backend will handle deduplication if needed
+        } else {
+          return; // No chunks available yet
+        }
+
+        if (!blobToUpload || blobToUpload.size === 0) {
+          return; // Invalid blob
+        }
+
+        // Create blob URL for upload
+        const blobUrl = URL.createObjectURL(blobToUpload);
+        
+        console.log(`Uploading chunk: ${blobToUpload.size} bytes`);
+        
+        // DEBUG: Log language before uploading chunk
+        console.log(`[RecordScreen] Uploading chunk with language: "${selectedLanguage}"`);
+        
+        // Upload chunk
+        const result = await uploadAudioChunk(lectureId, blobUrl, user.uid, selectedLanguage);
+        
+        // Clean up blob URL
+        URL.revokeObjectURL(blobUrl);
+        
+        // Update live transcript
+        if (result.liveTranscript) {
+          setLiveTranscript(result.liveTranscript);
+          console.log('Live transcript updated:', result.liveTranscript.substring(0, 100) + '...');
+        }
+      } else {
+        // Native platforms - would need to get chunk from expo-audio
+        // For now, skip on native (expo-audio limitation)
+        console.log('Chunk upload skipped on native platform');
+      }
+    } catch (error) {
+      // Silently fail chunk uploads - don't interrupt recording
+      console.warn('Failed to upload chunk:', error);
+    }
+  };
+
+  const requestMicrophonePermission = async (): Promise<boolean> => {
+    // For web, use browser's MediaDevices API
+    if (Platform.OS === 'web') {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          Alert.alert(
+            'Microphone Not Supported',
+            'Your browser does not support microphone access. Please use a modern browser like Chrome, Firefox, or Safari.',
+            [{ text: 'OK' }]
+          );
+          return false;
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Stop the stream immediately - we just needed permission
+        stream.getTracks().forEach(track => track.stop());
+        console.log('Microphone permission granted');
+        return true;
+      } catch (error: any) {
+        console.error('Microphone permission denied:', error);
+        const errorMessage = error?.message || 'Unknown error';
+        
+        if (errorMessage.includes('NotAllowedError') || errorMessage.includes('Permission denied')) {
+          Alert.alert(
+            'Microphone Permission Required',
+            'Please allow microphone access to record lectures. Click the microphone icon in your browser\'s address bar to grant permission.',
+            [{ text: 'OK' }]
+          );
+        } else if (errorMessage.includes('NotFoundError')) {
+          Alert.alert(
+            'No Microphone Found',
+            'No microphone was found on your device. Please connect a microphone and try again.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert(
+            'Microphone Error',
+            `Unable to access microphone: ${errorMessage}`,
+            [{ text: 'OK' }]
+          );
+        }
+        return false;
+      }
+    }
+
+    // For native platforms, permissions are handled automatically by expo-audio
+    // but we can still try to prepare the recorder which will trigger permission request
+    return true;
+  };
+
   const startRecording = async () => {
+    console.log('startRecording called', { lectureId, userId: user?.uid });
+    
     if (!user?.uid) {
       Alert.alert('Error', 'Please log in to record lectures');
       return;
     }
 
-    if (!lectureId) {
-      Alert.alert('Error', 'No lecture selected. Please select a lecture first.');
+    // Request microphone permission first
+    const hasPermission = await requestMicrophonePermission();
+    if (!hasPermission) {
+      console.log('Microphone permission denied');
       return;
     }
 
+    let currentLectureId = lectureId;
+
+    // If no lectureId provided, create a new lecture
+    if (!currentLectureId) {
+      console.log('No lectureId provided, creating new lecture...');
+      try {
+        const result = await createLecture(user.uid, {
+          title: 'New Lecture Recording',
+        });
+        currentLectureId = result.lectureId;
+        setLectureId(currentLectureId);
+        console.log('Created new lecture:', currentLectureId);
+      } catch (error) {
+        console.error('Failed to create lecture:', error);
+        Alert.alert('Error', `Failed to create lecture: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        return;
+      }
+    }
+
     try {
+      console.log('Starting transcription for lecture:', currentLectureId);
       // Start transcribing the existing lecture
-      await startTranscribing(lectureId, user.uid);
+      await startTranscribing(currentLectureId, user.uid);
 
-      // Prepare and start recording
-      await audioRecorder.prepareToRecordAsync();
-      audioRecorder.record();
-    setIsRecording(true);
-    setShowSummary(false);
-    setRecordingTime(0);
-      setLiveTranscript('');
-      lastChunkTime.current = Date.now();
+      // On web, use MediaRecorder API directly for better control
+      if (Platform.OS === 'web') {
+        try {
+          // Get user media stream
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          webStreamRef.current = stream;
+          webAudioChunksRef.current = [];
+          
+          // Create MediaRecorder
+          const mediaRecorder = new MediaRecorder(stream, {
+            mimeType: 'audio/webm;codecs=opus'
+          });
+          webMediaRecorderRef.current = mediaRecorder;
+          
+          // Collect audio chunks for final recording and live transcription
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              webAudioChunksRef.current.push(event.data);
+              // Also store for live transcription (keep last 20 chunks for rolling window)
+              webChunkBlobsRef.current.push(event.data);
+              if (webChunkBlobsRef.current.length > 20) {
+                webChunkBlobsRef.current.shift(); // Remove oldest chunk
+              }
+            }
+          };
+          
+          // Create blob URI when recording stops
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(webAudioChunksRef.current, { type: 'audio/webm' });
+            const blobUrl = URL.createObjectURL(audioBlob);
+            recordingUriRef.current = blobUrl;
+            console.log('Web recording stopped, blob URL created:', blobUrl);
+          };
+          
+          // Start recording with timeslice for chunk collection
+          mediaRecorder.start(1000); // Collect data every second
+          setIsRecording(true);
+          isRecordingRef.current = true;
+          isPausedRef.current = false;
+          setShowSummary(false);
+          setRecordingTime(0);
+          setLiveTranscript('');
+          lastChunkTime.current = Date.now();
+          lastChunkUploadTimeRef.current = Date.now();
+          recordingUriRef.current = null;
+          webChunkBlobsRef.current = [];
+          
+          // Start periodic chunk uploads for live transcription (every 10 seconds)
+          chunkUploadInterval.current = setInterval(() => {
+            if (isRecordingRef.current && !isPausedRef.current) {
+              uploadChunk();
+            }
+          }, 10000); // Upload chunk every 10 seconds
+          
+          console.log('Web MediaRecorder started with live transcription');
+        } catch (error: any) {
+          console.error('Error starting web MediaRecorder:', error);
+          throw error;
+        }
+      } else {
+        // Native platforms use expo-audio
+        await audioRecorder.prepareToRecordAsync();
+        audioRecorder.record();
+        setIsRecording(true);
+        isRecordingRef.current = true;
+        isPausedRef.current = false;
+        setShowSummary(false);
+        setRecordingTime(0);
+        setLiveTranscript('');
+        lastChunkTime.current = Date.now();
+        lastChunkUploadTimeRef.current = Date.now();
+        recordingUriRef.current = null;
+        
+        // Note: Live chunk uploads not available on native due to expo-audio limitations
+        // Will rely on final transcription after recording stops
+      }
 
-      // Note: Live transcription via chunks is complex with expo-audio
-      // For now, we'll do final transcription after recording stops
-      // Live transcription can be added later with a different approach
+      // Start periodic chunk uploads for live transcription (every 15 seconds)
+      chunkUploadInterval.current = setInterval(() => {
+        uploadChunk();
+      }, 15000); // Upload chunk every 15 seconds
+      
+      console.log('Recording started successfully');
     } catch (error) {
       console.error('Error starting recording:', error);
-      Alert.alert('Error', 'Failed to start transcribing. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Provide more helpful error messages
+      if (errorMessage.includes('Permission denied') || errorMessage.includes('NotAllowedError')) {
+        Alert.alert(
+          'Microphone Permission Denied',
+          'Please allow microphone access in your browser settings and try again.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Error', `Failed to start transcribing: ${errorMessage}`);
+      }
     }
   };
 
   const pauseRecording = async () => {
     try {
-      if (isPaused) {
-        await audioRecorder.record();
-        setIsPaused(false);
+      if (Platform.OS === 'web') {
+        // Handle web MediaRecorder pause/resume
+        const mediaRecorder = webMediaRecorderRef.current;
+        if (!mediaRecorder) return;
+        
+        if (isPaused) {
+          // Resume recording
+          if (mediaRecorder.state === 'inactive') {
+            mediaRecorder.start(1000);
+          }
+          setIsPaused(false);
+          isPausedRef.current = false;
+        } else {
+          // Pause recording
+          if (mediaRecorder.state === 'recording') {
+            mediaRecorder.pause();
+          }
+          setIsPaused(true);
+          isPausedRef.current = true;
+        }
       } else {
-        await audioRecorder.pause();
-        setIsPaused(true);
+        // Native platforms
+        if (isPaused) {
+          await audioRecorder.record();
+          setIsPaused(false);
+          isPausedRef.current = false;
+        } else {
+          await audioRecorder.pause();
+          setIsPaused(true);
+          isPausedRef.current = true;
+        }
       }
     } catch (error) {
       console.error('Error pausing recording:', error);
@@ -237,34 +650,141 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
         clearInterval(chunkUploadInterval.current);
         chunkUploadInterval.current = null;
       }
-
-      // Stop recording
-      await audioRecorder.stop();
       
-      // Get URI from recorder
-      const uri = audioRecorder.uri;
+      // Clear URI check interval if it exists
+      if ((chunkUploadInterval as any).uriCheckInterval) {
+        clearInterval((chunkUploadInterval as any).uriCheckInterval);
+        (chunkUploadInterval as any).uriCheckInterval = null;
+      }
+
+      // Stop recording - handle web platform differently
+      isRecordingRef.current = false;
+      isPausedRef.current = false;
+      
+      let uri: string | null = null;
+      
+      if (Platform.OS === 'web') {
+        // Use web MediaRecorder if available
+        const mediaRecorder = webMediaRecorderRef.current;
+        const stream = webStreamRef.current;
+        
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          // Stop MediaRecorder
+          mediaRecorder.stop();
+          
+          // Stop all tracks in the stream
+          if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+          }
+          
+          // Wait for onstop event to fire and create blob URL
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          uri = recordingUriRef.current;
+          console.log('Web MediaRecorder stopped, URI:', uri);
+        } else {
+          // Fallback to expo-audio if MediaRecorder wasn't used
+          try {
+            uri = recordingUriRef.current || audioRecorder.uri || null;
+            if (!uri) {
+              await audioRecorder.stop();
+              await new Promise(resolve => setTimeout(resolve, 300));
+              uri = audioRecorder.uri || null;
+            }
+          } catch (error: any) {
+            console.warn('Error stopping expo-audio recorder:', error?.message);
+          }
+        }
+      } else {
+        // Native platforms
+        await audioRecorder.stop();
+        uri = audioRecorder.uri || null;
+      }
+      
+      // Clean up web resources
+      if (Platform.OS === 'web') {
+        webMediaRecorderRef.current = null;
+        webStreamRef.current = null;
+        webAudioChunksRef.current = [];
+        webChunkBlobsRef.current = [];
+      }
       
       if (!uri) {
-        throw new Error('No recording URI available');
+        throw new Error('No recording URI available. The recording may have been too short or failed. Please try recording again.');
       }
+
+      console.log('Recording URI:', uri);
+      console.log('\n========== RECORD SCREEN DEBUG ==========');
+      console.log(`[RecordScreen] About to transcribe with language: "${selectedLanguage}"`);
+      console.log(`[RecordScreen] Language type: ${typeof selectedLanguage}`);
+      console.log(`[RecordScreen] Language === 'ko': ${selectedLanguage === 'ko'}`);
+      console.log(`[RecordScreen] Language === 'en': ${selectedLanguage === 'en'}`);
+      console.log(`[RecordScreen] Language === 'auto': ${selectedLanguage === 'auto'}`);
+      console.log(`[RecordScreen] Recording time: ${recordingTime}`);
+      
+      // CRITICAL: Ensure we're sending the correct language
+      const languageToSend = selectedLanguage || 'auto';
+      console.log(`[RecordScreen] ⚠️  Language to send: "${languageToSend}"`);
+      console.log(`[RecordScreen] ⚠️  If you're speaking Korean, make sure Korean (한국어) is selected!`);
+      console.log('==========================================\n');
 
       // Transcribe audio file (this will transcribe using Whisper and delete the audio)
       // Only the transcript is saved, not the audio file
-      const transcribeResult = await transcribeLecture(lectureId, uri, user.uid, recordingTime);
+      const transcribeResult = await transcribeLecture(lectureId, uri, user.uid, recordingTime, languageToSend);
       const newTranscriptionId = transcribeResult.transcriptionId;
       setTranscriptionId(newTranscriptionId);
 
+      // Wait for transcription to be saved to database and verify it exists
+      let retries = 0;
+      let transcriptAvailable = false;
+      while (retries < 5 && !transcriptAvailable) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        try {
+          // Try to get the lecture to check if transcript exists
+          const lectureData = await getLecture(lectureId, user.uid);
+          if (lectureData.transcript) {
+            transcriptAvailable = true;
+            console.log('Transcript available, proceeding with summary generation');
+          }
+        } catch (error) {
+          console.log(`Waiting for transcript... (attempt ${retries + 1}/5)`);
+        }
+        retries++;
+      }
+
+      if (!transcriptAvailable) {
+        console.warn('Transcript not yet available, but proceeding anyway');
+      }
+
       // Generate summary from the transcript using transcriptionId
-      await generateSummary(newTranscriptionId);
+      try {
+        await generateSummary(newTranscriptionId);
+      } catch (error: any) {
+        console.error('Error generating summary:', error);
+        // Don't fail the whole process if summary generation fails
+        if (error.message?.includes('Transcript not available')) {
+          console.warn('Transcript not available yet, summary generation skipped');
+        }
+      }
 
       // Generate checklist from the transcript using transcriptionId
-      await generateChecklist(newTranscriptionId);
+      try {
+        await generateChecklist(newTranscriptionId);
+      } catch (error: any) {
+        console.error('Error generating checklist:', error);
+        // Don't fail the whole process if checklist generation fails
+        if (error.message?.includes('Transcript not available')) {
+          console.warn('Transcript not available yet, checklist generation skipped');
+        }
+      }
 
       // Load updated lecture data
       await loadLecture();
 
     setIsRecording(false);
+    isRecordingRef.current = false;
     setIsPaused(false);
+    isPausedRef.current = false;
     setShowSummary(true);
     } catch (error) {
       console.error('Error stopping recording:', error);
@@ -480,7 +1000,7 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
                 ))
               ) : (
                 <View style={styles.emptyState}>
-                  <Text style={styles.emptyStateText}>Summary will appear here after processing</Text>
+                  <Text style={styles.emptyText}>Summary will appear here after processing</Text>
                 </View>
               )}
             </View>
@@ -579,9 +1099,21 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
           {activeTab === 'transcript' && (
             <View style={styles.tabContent}>
               <View style={styles.transcriptCard}>
-                <Text style={styles.transcriptText}>
-                  {lecture?.transcript || lecture?.liveTranscript || 'Transcript will appear here after processing'}
-                </Text>
+                {isRecording && liveTranscript ? (
+                  <>
+                    <View style={styles.liveIndicator}>
+                      <View style={styles.liveDot} />
+                      <Text style={styles.liveLabel}>Live Transcription</Text>
+                    </View>
+                    <Text style={styles.transcriptText}>
+                      {liveTranscript}
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={styles.transcriptText}>
+                    {lecture?.transcript || lecture?.liveTranscript || liveTranscript || 'Transcript will appear here after processing'}
+                  </Text>
+                )}
               </View>
             </View>
           )}
@@ -589,7 +1121,7 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
           {/* Chat Tab */}
           {activeTab === 'chat' && user?.uid && (
             <View style={styles.tabContent}>
-              <LectureChatbot userId={user.uid} />
+              <LectureChatbot userId={user.uid} transcriptionId={transcriptionId || undefined} />
             </View>
           )}
 
@@ -660,66 +1192,78 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
       )}
 
       {/* Content */}
-      <View style={styles.content}>
-        {/* Timer Display */}
-        <Animated.Text
-          style={[
-            styles.timer,
-            {
-              transform: [{ scale: scaleAnim }],
-              opacity: fadeAnim,
-            },
-          ]}
-        >
-          {formatTime(recordingTime)}
-        </Animated.Text>
+      {isRecording ? (
+        <View style={styles.content}>
+          {/* Timer Display */}
+          <Animated.Text
+            style={[
+              styles.timer,
+              {
+                transform: [{ scale: scaleAnim }],
+                opacity: fadeAnim,
+              },
+            ]}
+          >
+            {formatTime(recordingTime)}
+          </Animated.Text>
 
-        {/* Waveform Visualizer */}
-        {isRecording && !isPaused && (
-          <View style={styles.waveformContainer}>
-            {waveforms.map((anim, index) => (
-              <Animated.View
-                key={index}
-                style={[
-                  styles.waveformBar,
-                  {
-                    transform: [
-                      {
-                        scaleY: anim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.2, 1],
-                        }),
-                      },
-                    ],
-                    opacity: anim,
-                  },
-                ]}
-              />
-            ))}
-          </View>
-        )}
-
-        {/* Center Visual */}
-        <Animated.View
-          style={[
-            styles.visualContainer,
-            { transform: [{ scale: scaleAnim }] },
-          ]}
-        >
-          {!isRecording ? (
-            <View style={styles.readyState}>
-              <View style={styles.neumorphicCircle}>
-                <LinearGradient
-                  colors={['#6B7C32', '#556B2F']}
-                  style={styles.micGradient}
-                >
-                  <Ionicons name="mic" size={56} color="#ffffff" />
-                </LinearGradient>
+          {/* Live Transcript Display */}
+          {liveTranscript && (
+            <Animated.View
+              style={[
+                styles.liveTranscriptContainer,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ scale: scaleAnim }],
+                },
+              ]}
+            >
+              <View style={styles.liveIndicator}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveLabel}>Live Transcription</Text>
               </View>
-              <Text style={styles.readyText}>Ready to Record</Text>
-              <Text style={styles.readySubtext}>Tap to start capturing</Text>
+              <ScrollView 
+                style={styles.liveTranscriptScroll}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled={true}
+              >
+                <Text style={styles.liveTranscriptText}>{liveTranscript}</Text>
+              </ScrollView>
+            </Animated.View>
+          )}
+
+          {/* Waveform Visualizer */}
+          {!isPaused && (
+            <View style={styles.waveformContainer}>
+              {waveforms.map((anim, index) => (
+                <Animated.View
+                  key={index}
+                  style={[
+                    styles.waveformBar,
+                    {
+                      transform: [
+                        {
+                          scaleY: anim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.2, 1],
+                          }),
+                        },
+                      ],
+                      opacity: anim,
+                    },
+                  ]}
+                />
+              ))}
             </View>
-          ) : (
+          )}
+
+          {/* Center Visual */}
+          <Animated.View
+            style={[
+              styles.visualContainer,
+              { transform: [{ scale: scaleAnim }] },
+            ]}
+          >
             <View style={styles.recordingState}>
               {/* Animated Ripples */}
               <Animated.View
@@ -784,80 +1328,126 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
                 </LinearGradient>
               </Animated.View>
             </View>
-          )}
-        </Animated.View>
-
-        {/* Recording Tips */}
-        {!isRecording && (
-          <Animated.View
-            style={[
-              styles.tipsCard,
-              {
-                opacity: fadeAnim,
-                transform: [
-                  {
-                    translateY: fadeAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [50, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={styles.tipItem}>
-              <View style={styles.tipIconCircle}>
-                <Ionicons name="volume-high" size={18} color="#10b981" />
-              </View>
-              <Text style={styles.tipText}>Find a quiet environment</Text>
-            </View>
-            <View style={styles.tipItem}>
-              <View style={styles.tipIconCircle}>
-                <Ionicons name="chatbubble" size={18} color="#3b82f6" />
-              </View>
-              <Text style={styles.tipText}>Speak clearly and steadily</Text>
-            </View>
-            <View style={styles.tipItem}>
-              <View style={styles.tipIconCircle}>
-                <Ionicons name="sparkles" size={18} color="#a855f7" />
-              </View>
-              <Text style={styles.tipText}>AI will analyze automatically</Text>
-            </View>
           </Animated.View>
-        )}
-      </View>
+        </View>
+      ) : (
+        <ScrollView 
+          style={styles.transcriptsContainer}
+          contentContainerStyle={styles.transcriptsContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Transcripts List */}
+          <View style={styles.transcriptsList}>
+            {(() => {
+              console.log('[RecordScreen] Rendering transcripts - isLoadingTranscripts:', isLoadingTranscripts, 'transcripts.length:', transcripts.length);
+              console.log('[RecordScreen] Transcripts array:', transcripts);
+              return isLoadingTranscripts ? (
+                <View style={styles.emptyState}>
+                  <ActivityIndicator size="small" color="#6B7C32" />
+                  <Text style={styles.emptyText}>Loading transcripts...</Text>
+                </View>
+              ) : transcripts.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="document-text-outline" size={48} color="#d1d5db" />
+                  <Text style={styles.emptyTitle}>No transcripts yet</Text>
+                  <Text style={styles.emptyText}>Start recording to create your first transcript</Text>
+                  <Text style={styles.emptyText}>lectureId: {lectureId || 'none'}</Text>
+                </View>
+              ) : (
+                transcripts.map((transcript: {
+                  transcriptionId: string | null;
+                  transcript: string;
+                  createdAt: string | { _seconds: number; _nanoseconds: number } | { seconds: number; nanoseconds: number };
+                  isCurrent: boolean;
+                  isLive?: boolean;
+                }, index: number) => {
+                  console.log(`[RecordScreen] Rendering transcript ${index}:`, transcript);
+                  return (
+                    <View key={index} style={styles.transcriptCard}>
+                      <View style={styles.transcriptHeader}>
+                        <View style={styles.transcriptMeta}>
+                          <Text style={styles.transcriptDate}>{formatDate(transcript.createdAt)}</Text>
+                          <Text style={styles.transcriptTime}>{formatTimestampTime(transcript.createdAt)}</Text>
+                        </View>
+                        {transcript.isCurrent && (
+                          <View style={styles.currentBadge}>
+                            <Text style={styles.currentBadgeText}>Current</Text>
+                          </View>
+                        )}
+                        {transcript.isLive && (
+                          <View style={styles.liveBadge}>
+                            <View style={styles.liveDotSmall} />
+                            <Text style={styles.liveBadgeText}>Live</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.transcriptPreview}>
+                        {transcript.transcript}
+                      </Text>
+                    </View>
+                  );
+                })
+              );
+            })()}
+          </View>
+        </ScrollView>
+      )}
 
-      {/* Modern Controls */}
-      <Animated.View
-        style={[
-          styles.controls,
-          {
-            opacity: fadeAnim,
-            transform: [
-              {
-                translateY: fadeAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [100, 0],
-                }),
-              },
-            ],
-          },
-        ]}
-      >
+      {/* Language Selector */}
+      {!isRecording && (
+        <View style={styles.languageSelector}>
+          <Text style={styles.languageLabel}>Language</Text>
+          <View style={styles.languageButtons}>
+            {languages.map((lang) => (
+              <TouchableOpacity
+                key={lang.code}
+                style={[
+                  styles.languageButton,
+                  selectedLanguage === lang.code && styles.languageButtonActive,
+                ]}
+                onPress={() => setSelectedLanguage(lang.code)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.languageFlag}>{lang.flag}</Text>
+                <Text
+                  style={[
+                    styles.languageButtonText,
+                    selectedLanguage === lang.code && styles.languageButtonTextActive,
+                  ]}
+                >
+                  {lang.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* Language Indicator During Recording */}
+      {isRecording && (
+        <View style={styles.languageIndicator}>
+          <Text style={styles.languageIndicatorText}>
+            {languages.find(l => l.code === selectedLanguage)?.flag} {languages.find(l => l.code === selectedLanguage)?.name}
+          </Text>
+        </View>
+      )}
+
+      {/* Controls */}
+      <View style={styles.controls}>
         {!isRecording ? (
           <TouchableOpacity
-            style={styles.mainButton}
+            style={styles.startButton}
             onPress={startRecording}
             activeOpacity={0.9}
           >
             <LinearGradient
               colors={['#6B7C32', '#556B2F']}
-              style={styles.mainButtonGradient}
+              style={styles.startButtonGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              <Ionicons name="mic" size={32} color="#ffffff" />
-              <Text style={styles.mainButtonText}>Start Transcribing</Text>
+              <Ionicons name="mic" size={24} color="#ffffff" />
+              <Text style={styles.startButtonText}>Start Recording</Text>
             </LinearGradient>
           </TouchableOpacity>
         ) : (
@@ -890,7 +1480,7 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
             </TouchableOpacity>
           </View>
         )}
-      </Animated.View>
+      </View>
     </View>
   );
 }
@@ -1088,10 +1678,213 @@ const styles = StyleSheet.create({
     color: '#374151',
     fontWeight: '500',
   },
-  controls: {
-    paddingHorizontal: 32,
-    paddingBottom: 48,
+  transcriptsContainer: {
+    flex: 1,
+  },
+  transcriptsContent: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 120,
+  },
+  transcriptsList: {
+    gap: 16,
+  },
+  transcriptCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#f3f4f6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  transcriptHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  transcriptMeta: {
+    flex: 1,
+  },
+  transcriptDate: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  transcriptTime: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  currentBadge: {
+    backgroundColor: '#f0f9ff',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  currentBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0369a1',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  liveBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+    gap: 4,
+  },
+  liveDotSmall: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#ef4444',
+  },
+  liveBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#ef4444',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  transcriptPreview: {
+    fontSize: 15,
+    lineHeight: 24,
+    color: '#374151',
+    fontWeight: '400',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    paddingHorizontal: 32,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  languageSelector: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 16,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  languageLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  languageButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  languageButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: '#f9fafb',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    gap: 8,
+  },
+  languageButtonActive: {
+    backgroundColor: '#f0f9ff',
+    borderColor: '#6B7C32',
+  },
+  languageFlag: {
+    fontSize: 20,
+  },
+  languageButtonText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  languageButtonTextActive: {
+    color: '#6B7C32',
+    fontWeight: '600',
+  },
+  languageIndicator: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    alignItems: 'center',
+  },
+  languageIndicatorText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  controls: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 40,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  startButton: {
+    width: '100%',
+    height: 56,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#6B7C32',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  startButtonGradient: {
+    width: '100%',
+    height: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  startButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+    letterSpacing: 0.2,
   },
   mainButton: {
     width: '100%',
@@ -1316,12 +2109,53 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textDecorationLine: 'line-through',
   },
-  transcriptCard: {
+  liveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ef4444',
+  },
+  liveLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ef4444',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  liveTranscriptContainer: {
+    width: '100%',
+    maxWidth: 600,
+    maxHeight: 200,
     backgroundColor: '#ffffff',
     borderRadius: 16,
-    padding: 20,
+    padding: 16,
+    marginTop: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
     borderWidth: 1,
     borderColor: '#f3f4f6',
+  },
+  liveTranscriptScroll: {
+    maxHeight: 150,
+  },
+  liveTranscriptText: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 22,
+    fontWeight: '400',
   },
   transcriptText: {
     fontSize: 15,
@@ -1382,15 +2216,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 15,
     color: '#6b7280',
-  },
-  emptyState: {
-    paddingVertical: 40,
-    alignItems: 'center',
-  },
-  emptyStateText: {
-    fontSize: 15,
-    color: '#9ca3af',
-    textAlign: 'center',
   },
   checkboxRow: {
     flexDirection: 'row',

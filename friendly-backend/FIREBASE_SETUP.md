@@ -97,7 +97,29 @@ You have **two options**:
 
 6. **Save the `.env` file**
 
-7. **Restart the server:**
+7. **Optional: Configure Storage Bucket (for PDF uploads)**
+   
+   If you're using PDF upload features, you may need to set the storage bucket name:
+   
+   - The bucket name is automatically detected from your `project_id`
+   - **New Firebase projects** use: `{project_id}.firebasestorage.app`
+   - **Older Firebase projects** use: `{project_id}.appspot.com`
+   - The backend will try the new format first, then fall back to the old format
+   - If you have a custom bucket name, add this to your `.env` file:
+     ```
+     FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
+     ```
+     or
+     ```
+     FIREBASE_STORAGE_BUCKET=your-project-id.appspot.com
+     ```
+   - **To find your bucket name:**
+     1. Go to Firebase Console > Storage
+     2. Click on Settings (gear icon)
+     3. Look for "Bucket name" - it will show the exact format
+   - **Important:** Make sure Firebase Storage is enabled in your Firebase Console
+
+8. **Restart the server:**
    ```bash
    pm2 restart friendly-backend
    ```
@@ -168,6 +190,56 @@ You have **two options**:
 2. Verify the project ID matches in the JSON
 3. Regenerate a new key if needed
 
+### Error: "Bucket name not specified or invalid" or "The specified bucket does not exist" (PDF uploads)
+
+**Cause:** Firebase Storage bucket not configured or doesn't exist
+
+**Fix:**
+1. **Check if Firebase Storage is enabled:**
+   - Go to Firebase Console > Storage
+   - If you see "Get started" button, click it to enable Storage
+   - Storage must be enabled before you can upload files
+
+2. **Find your bucket name:**
+   - Go to Firebase Console > Storage > Settings
+   - Look for "Bucket name" - it will show the exact format
+   - Common formats:
+     - New projects: `{project_id}.firebasestorage.app`
+     - Older projects: `{project_id}.appspot.com`
+
+3. **Set the bucket name explicitly:**
+   - Add to your `.env` file:
+     ```
+     FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
+     ```
+     or (for older projects):
+     ```
+     FIREBASE_STORAGE_BUCKET=your-project-id.appspot.com
+     ```
+   - Replace `your-project-id` with your actual Firebase project ID from the service account JSON
+
+4. **Verify the bucket name matches:**
+   - Check your frontend Firebase config (`friendly-frontend/src/config/firebase.ts`)
+   - The `storageBucket` value should match what you set in the backend
+   - Example: If frontend has `storageBucket: "friendly-34f75.firebasestorage.app"`, backend should use the same
+
+5. **Restart the server:**
+   ```bash
+   pm2 restart friendly-backend
+   ```
+
+6. **Check server logs:**
+   ```bash
+   pm2 logs friendly-backend --lines 30
+   ```
+   - Look for: `✅ Firebase Admin SDK initialized with storage bucket: {bucket-name}`
+   - If you see warnings about bucket not configured, the bucket name is incorrect
+
+**Still having issues?**
+- Verify your service account has Storage Admin permissions
+- Check that the project ID in your service account JSON matches your Firebase project
+- Try both bucket name formats (.firebasestorage.app and .appspot.com)
+
 ### Server not picking up .env changes
 
 **Fix:**
@@ -204,6 +276,7 @@ pm2 start ecosystem.config.js
 - [ ] Downloaded Firebase service account JSON key
 - [ ] Added `FIREBASE_SERVICE_ACCOUNT_JSON` to `.env` file
 - [ ] JSON is properly formatted (single line, wrapped in quotes)
+- [ ] (Optional) Added `FIREBASE_STORAGE_BUCKET` if using PDF uploads
 - [ ] Restarted the server (`pm2 restart friendly-backend`)
 - [ ] Verified in logs: "✅ Firebase Admin SDK initialized successfully"
 - [ ] Tested the endpoint and got success response

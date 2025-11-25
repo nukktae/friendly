@@ -96,8 +96,8 @@ export default function AuthCallback() {
               console.log('Successfully synced', syncedItems.length, 'events from Google Calendar');
             }
             
-            // Navigate back to the schedule screen
-            router.replace('/(tabs)');
+            // Navigate back to the classes screen
+            router.replace('/(tabs)/explore');
             
           } catch (tokenError) {
             console.error('Error processing authorization code:', tokenError);

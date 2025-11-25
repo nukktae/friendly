@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 
 export default function Index() {
-  const { isAuthenticated, isOnboardingComplete, loadUserProfile, user } = useApp();
+  const { isAuthenticated, isOnboardingComplete, loadUserProfile, user, authInitialized } = useApp();
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
 
@@ -30,9 +30,9 @@ export default function Index() {
     }
   }, [isAuthenticated, user?.uid, loadUserProfile, isMounted]);
 
-  // Handle navigation after mount
+  // Handle navigation after mount AND auth initialization
   useEffect(() => {
-    if (!isMounted) return;
+    if (!isMounted || !authInitialized) return;
 
     // Small delay to ensure router is ready
     const timer = setTimeout(() => {
@@ -44,8 +44,8 @@ export default function Index() {
     console.log('Index: Redirecting to onboarding');
           router.replace('/onboarding');
   } else {
-    console.log('Index: Redirecting to tabs');
-          router.replace('/(tabs)');
+    console.log('Index: Redirecting to classes tab');
+          router.replace('/(tabs)/explore');
         }
       } catch (error) {
         console.error('Navigation error:', error);
@@ -53,10 +53,10 @@ export default function Index() {
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [isAuthenticated, isOnboardingComplete, isMounted, router]);
+  }, [isAuthenticated, isOnboardingComplete, isMounted, authInitialized, router]);
 
   // Show loading while determining where to navigate
-  if (!isMounted) {
+  if (!isMounted || !authInitialized) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color="#6B7C32" />

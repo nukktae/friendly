@@ -1,8 +1,11 @@
 import { useApp } from '@/src/context/AppContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const REMEMBER_ME_KEY = '@remembered_credentials';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -12,6 +15,26 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  // Load saved credentials on mount
+  useEffect(() => {
+    const loadSavedCredentials = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(REMEMBER_ME_KEY);
+        if (saved) {
+          const credentials = JSON.parse(saved);
+          setEmail(credentials.email || '');
+          setPassword(credentials.password || '');
+          setRememberMe(true);
+        }
+      } catch (error) {
+        console.error('Failed to load saved credentials:', error);
+      }
+    };
+
+    loadSavedCredentials();
+  }, []);
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -22,7 +45,27 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await login(email, password);
-      router.replace('/(tabs)');
+      
+      // Save credentials if remember me is checked
+      if (rememberMe) {
+        try {
+          await AsyncStorage.setItem(REMEMBER_ME_KEY, JSON.stringify({
+            email,
+            password,
+          }));
+        } catch (error) {
+          console.error('Failed to save credentials:', error);
+        }
+      } else {
+        // Clear saved credentials if remember me is unchecked
+        try {
+          await AsyncStorage.removeItem(REMEMBER_ME_KEY);
+        } catch (error) {
+          console.error('Failed to clear credentials:', error);
+        }
+      }
+      
+      router.replace('/(tabs)/explore');
     } catch (error: any) {
       Alert.alert('Login Failed', error.message || 'Invalid email or password');
     } finally {
@@ -34,7 +77,7 @@ export default function LoginScreen() {
     setGoogleLoading(true);
     try {
       await signInWithGoogle();
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/explore');
     } catch (error: any) {
       Alert.alert('Google Sign In Failed', error.message || 'Failed to sign in with Google');
     } finally {
@@ -113,10 +156,26 @@ export default function LoginScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Forgot Password */}
-      <TouchableOpacity style={styles.forgotPassword}>
-        <Text style={styles.forgotPasswordText}>Forgot password?</Text>
-      </TouchableOpacity>
+      {/* Remember Me Checkbox */}
+      <View style={styles.rememberMeContainer}>
+        <TouchableOpacity
+          style={styles.checkboxContainer}
+          onPress={() => setRememberMe(!rememberMe)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
+            {rememberMe && (
+              <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+            )}
+          </View>
+          <Text style={styles.rememberMeText}>Remember me</Text>
+        </TouchableOpacity>
+
+        {/* Forgot Password */}
+        <TouchableOpacity style={styles.forgotPassword}>
+          <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Sign In Button */}
       <TouchableOpacity 
@@ -225,9 +284,37 @@ const styles = StyleSheet.create({
     top: 14,
     padding: 4,
   },
-  forgotPassword: {
-    alignSelf: 'flex-end',
+  rememberMeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 24,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: '#666',
+    borderRadius: 4,
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  checkboxChecked: {
+    backgroundColor: '#4a4a4a',
+    borderColor: '#4a4a4a',
+  },
+  rememberMeText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  forgotPassword: {
+    // Removed alignSelf: 'flex-end' since it's now in a flex row
   },
   forgotPasswordText: {
     fontSize: 14,

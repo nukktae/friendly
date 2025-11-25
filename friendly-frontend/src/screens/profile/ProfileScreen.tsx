@@ -43,6 +43,8 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
     fullName: '',
     nickname: '',
     university: '',
+    studentNumber: '',
+    major: '',
   });
   const [isMounted, setIsMounted] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,7 +91,7 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
           Alert.alert(
             'Profile Setup',
             'Your profile needs to be set up. Please try again or contact support.',
-            [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]
+            [{ text: 'OK', onPress: () => router.replace('/(tabs)/explore') }]
           );
           return;
         }
@@ -113,6 +115,8 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
         fullName: profile.fullName || '',
         nickname: profile.nickname || '',
         university: profile.university || '',
+        studentNumber: profile.studentNumber || '',
+        major: profile.major || '',
       });
       setShowEditModal(true);
     }
@@ -267,39 +271,43 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
               />
             ) : (
               <View style={styles.avatarPlaceholder}>
-                <Ionicons name="person" size={32} color="#6B7C32" />
+                <Ionicons name="person" size={28} color="#4B5563" />
               </View>
             )}
             <View style={styles.cameraButton}>
               {isUpdating ? (
-                <ActivityIndicator size="small" color="#6B7C32" />
+                <ActivityIndicator size="small" color="#4B5563" />
               ) : (
-                <Ionicons name="camera" size={14} color="#6B7C32" />
+                <Ionicons name="camera" size={12} color="#4B5563" />
               )}
             </View>
-            </TouchableOpacity>
+          </TouchableOpacity>
           
           {/* User Info */}
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>
-              {profile?.fullName || user?.name || 'User'}
-            </Text>
+            <View style={styles.nameRow}>
+              <Text style={styles.userName}>
+                {profile?.fullName || user?.name || 'User'}
+              </Text>
+              {profile?.schoolVerified && (
+                <View style={styles.verifiedBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                </View>
+              )}
+            </View>
+            
             {profile?.nickname && (
               <Text style={styles.userNickname}>@{profile.nickname}</Text>
             )}
+            
             <Text style={styles.userEmail}>
               {profile?.email || user?.email || 'user@example.com'}
             </Text>
+            
             {profile?.university && (
               <View style={styles.universityContainer}>
-                <Ionicons name="school-outline" size={14} color="#6b7280" />
+                <Ionicons name="school-outline" size={13} color="#6B7280" />
                 <Text style={styles.universityText}>{profile.university}</Text>
-              </View>
-            )}
-            {profile?.schoolVerified && (
-              <View style={styles.verifiedBadge}>
-                <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
-                <Text style={styles.verifiedText}>School Verified</Text>
               </View>
             )}
           </View>
@@ -308,9 +316,9 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
           <TouchableOpacity
             style={styles.editButton}
             onPress={handleEditPress}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
           >
-            <Ionicons name="create-outline" size={18} color="#6B7C32" />
+            <Ionicons name="create-outline" size={16} color="#4B5563" />
             <Text style={styles.editButtonText}>Edit Profile</Text>
           </TouchableOpacity>
         </View>
@@ -318,7 +326,9 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
         {/* Info Section */}
         <View style={styles.infoSection}>
           <View style={styles.infoItem}>
-            <Ionicons name="calendar-outline" size={18} color="#6b7280" />
+            <View style={styles.infoIconContainer}>
+              <Ionicons name="calendar-outline" size={16} color="#6B7280" />
+            </View>
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Member Since</Text>
               <Text style={styles.infoValue}>
@@ -328,22 +338,55 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
           </View>
           {profile?.schoolEmail && (
             <View style={styles.infoItem}>
-              <Ionicons name="mail-outline" size={18} color="#6b7280" />
+              <View style={styles.infoIconContainer}>
+                <Ionicons name="mail-outline" size={16} color="#6B7280" />
+              </View>
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>School Email</Text>
                 <Text style={styles.infoValue}>{profile.schoolEmail}</Text>
-            </View>
+              </View>
             </View>
           )}
+          {profile?.studentNumber && (
+            <View style={styles.infoItem}>
+              <View style={styles.infoIconContainer}>
+                <Ionicons name="id-card-outline" size={16} color="#6B7280" />
+              </View>
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>학번</Text>
+                <Text style={styles.infoValue}>{profile.studentNumber}</Text>
+              </View>
+            </View>
+          )}
+          <View style={[styles.infoItem, styles.infoItemLast]}>
+            <View style={styles.infoIconContainer}>
+              <Ionicons name="school-outline" size={16} color="#6B7280" />
+            </View>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Major</Text>
+              {profile?.major ? (
+                <Text style={styles.infoValue}>{profile.major}</Text>
+              ) : (
+                <TouchableOpacity
+                  onPress={handleEditPress}
+                  style={styles.addButton}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="add-circle-outline" size={16} color="#6366F1" />
+                  <Text style={styles.addButtonText}>Add Major</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </View>
 
         {/* Sign Out Button */}
         <TouchableOpacity
           onPress={handleLogout}
           style={styles.signOutButton}
-          activeOpacity={0.7}
+          activeOpacity={0.8}
         >
-          <Ionicons name="log-out-outline" size={20} color="#dc2626" />
+          <Ionicons name="log-out-outline" size={18} color="#EF4444" />
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -400,6 +443,28 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
                   placeholderTextColor="#9ca3af"
                 />
               </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>학번</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editForm.studentNumber}
+                  onChangeText={(text) => setEditForm({ ...editForm, studentNumber: text })}
+                  placeholder="Enter your student number"
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Major</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editForm.major}
+                  onChangeText={(text) => setEditForm({ ...editForm, major: text })}
+                  placeholder="Enter your major"
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
             </ScrollView>
 
             <View style={styles.modalFooter}>
@@ -449,20 +514,21 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#FAFAFA',
   },
   header: {
     paddingHorizontal: 20,
     paddingTop: 48,
-    paddingBottom: 16,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    paddingBottom: 20,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E7EB',
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '600',
     color: '#111827',
+    letterSpacing: -0.5,
   },
   loadingContainer: {
     flex: 1,
@@ -472,186 +538,216 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
-    color: '#6b7280',
+    color: '#6B7280',
+    fontWeight: '500',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
+    padding: 16,
+    paddingBottom: 32,
   },
   profileCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
   },
   avatarContainer: {
     position: 'relative',
     marginBottom: 16,
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#f3f4f6',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#F3F4F6',
   },
   avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#f0fdf4',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#F9FAFB',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#6B7C32',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
   },
   cameraButton: {
     position: 'absolute',
     bottom: 0,
     right: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#ffffff',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#6B7C32',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
   },
   userInfo: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
     width: '100%',
   },
-  userName: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 4,
   },
+  userName: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#111827',
+    letterSpacing: -0.3,
+  },
   userNickname: {
-    fontSize: 16,
-    color: '#6b7280',
-    marginBottom: 8,
+    fontSize: 15,
+    color: '#6B7280',
+    marginBottom: 6,
     fontWeight: '500',
   },
   userEmail: {
     fontSize: 14,
-    color: '#6b7280',
+    color: '#9CA3AF',
     marginBottom: 8,
+    fontWeight: '400',
   },
   universityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
+    gap: 5,
+    marginTop: 2,
   },
   universityText: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 13,
+    color: '#6B7280',
     fontWeight: '500',
   },
   verifiedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#f0fdf4',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginTop: 4,
-  },
-  verifiedText: {
-    fontSize: 12,
-    color: '#22c55e',
-    fontWeight: '600',
+    marginLeft: 4,
   },
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#f0fdf4',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
+    gap: 6,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#6B7C32',
+    borderColor: '#E5E7EB',
   },
   editButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#6B7C32',
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#4B5563',
+    letterSpacing: -0.2,
   },
   infoSection: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
   },
   infoItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#F3F4F6',
+  },
+  infoItemLast: {
+    borderBottomWidth: 0,
+  },
+  infoIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   infoContent: {
     flex: 1,
   },
   infoLabel: {
-    fontSize: 12,
-    color: '#9ca3af',
-    marginBottom: 4,
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginBottom: 3,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   infoValue: {
     fontSize: 15,
     color: '#111827',
     fontWeight: '500',
+    letterSpacing: -0.2,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  addButtonText: {
+    fontSize: 14,
+    color: '#6366F1',
+    fontWeight: '500',
+    letterSpacing: -0.2,
   },
   signOutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingVertical: 14,
     borderWidth: 1,
-    borderColor: '#fecaca',
+    borderColor: '#FEE2E2',
     gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
   },
   signOutText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#dc2626',
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#EF4444',
+    letterSpacing: -0.2,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     maxHeight: '90%',
     paddingBottom: 20,
   },
@@ -660,13 +756,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    paddingBottom: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#F3F4F6',
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '600',
     color: '#111827',
+    letterSpacing: -0.3,
   },
   closeButton: {
     padding: 4,
@@ -676,79 +774,88 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   formGroup: {
-    marginBottom: 20,
+    marginBottom: 18,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '500',
     color: '#374151',
     marginBottom: 8,
+    letterSpacing: -0.2,
   },
   input: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    paddingHorizontal: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
     color: '#111827',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: '#E5E7EB',
+    fontWeight: '400',
   },
   modalFooter: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
     padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    paddingTop: 16,
+    borderTopWidth: 0.5,
+    borderTopColor: '#F3F4F6',
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 12,
-    paddingVertical: 14,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    paddingVertical: 12,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#4B5563',
+    letterSpacing: -0.2,
   },
   saveButton: {
     flex: 1,
-    backgroundColor: '#6B7C32',
-    borderRadius: 12,
-    paddingVertical: 14,
+    backgroundColor: '#111827',
+    borderRadius: 10,
+    paddingVertical: 12,
     alignItems: 'center',
   },
   saveButtonDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
   saveButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
   logoutModalContent: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 32,
+    padding: 28,
     marginHorizontal: 24,
     alignItems: 'center',
   },
   logoutModalIcon: {
-    marginBottom: 16,
+    marginBottom: 14,
   },
   logoutModalTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: '#111827',
-    marginBottom: 8,
+    marginBottom: 6,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
   logoutModalSubtitle: {
     fontSize: 14,
-    color: '#6b7280',
+    color: '#6B7280',
     textAlign: 'center',
+    fontWeight: '400',
   },
 });
 

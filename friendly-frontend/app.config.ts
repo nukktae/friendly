@@ -35,6 +35,18 @@ export default {
       output: 'static',
       favicon: './assets/images/favicon.png',
       bundler: 'metro',
+      build: {
+        babel: {
+          include: ['**/*'],
+        },
+      },
+      experimental: {
+        useImportScripts: true,
+      },
+      // Content Security Policy for PDF.js CDN
+      meta: {
+        'Content-Security-Policy': "script-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline' 'unsafe-eval'; worker-src 'self' https://cdnjs.cloudflare.com blob:;",
+      },
     },
     plugins: [
       'expo-router',

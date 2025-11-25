@@ -12,14 +12,15 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { chatWithLectures, getChatHistory, deleteChat, deleteAllChatHistory } from '../../services/lecture/lectureService';
+import { chatWithLectures, chatWithTranscript, getChatHistory, deleteChat, deleteAllChatHistory } from '../../services/lecture/lectureService';
 import { ChatMessage } from '../../types/lecture.types';
 
 interface LectureChatbotProps {
   userId: string;
+  transcriptionId?: string; // Optional: if provided, chat will be focused on this specific transcript
 }
 
-export default function LectureChatbot({ userId }: LectureChatbotProps) {
+export default function LectureChatbot({ userId, transcriptionId }: LectureChatbotProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -82,7 +83,10 @@ export default function LectureChatbot({ userId }: LectureChatbotProps) {
     setIsLoading(true);
 
     try {
-      const response = await chatWithLectures(userId, question);
+      // If transcriptionId is provided, use transcript-specific chat, otherwise use global chat
+      const response = transcriptionId 
+        ? await chatWithTranscript(transcriptionId, userId, question)
+        : await chatWithLectures(userId, question);
 
       const assistantMessage: ChatMessage = {
         role: 'assistant',
@@ -197,9 +201,11 @@ export default function LectureChatbot({ userId }: LectureChatbotProps) {
           <View style={styles.emptyState}>
             <Ionicons name="chatbubbles-outline" size={40} color="#d1d5db" />
             <Text style={styles.emptyStateTitle}>Start a conversation</Text>
-            <Text style={styles.emptyStateText}>
-              Ask me anything about your lectures
-            </Text>
+          <Text style={styles.emptyStateText}>
+            {transcriptionId 
+              ? 'Ask me anything about this lecture transcript'
+              : 'Ask me anything about your lectures'}
+          </Text>
           </View>
         ) : (
           messages.map((message, index) => (
@@ -272,7 +278,7 @@ export default function LectureChatbot({ userId }: LectureChatbotProps) {
       <View style={styles.inputContainer}>
         <TextInput
           style={styles.input}
-          placeholder="Ask about your lectures..."
+          placeholder={transcriptionId ? "Ask about this transcript..." : "Ask about your lectures..."}
           placeholderTextColor="#9ca3af"
           value={inputText}
           onChangeText={setInputText}

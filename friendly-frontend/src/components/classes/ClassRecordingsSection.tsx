@@ -1,13 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import {
-  ActivityIndicator,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { ClassRecording } from '@/src/types';
+import { SkeletonList } from '@/src/components/common/Skeleton';
 
 interface ClassRecordingsSectionProps {
   recordings: ClassRecording[];
@@ -42,16 +42,17 @@ export function ClassRecordingsSection({
   onRecordingPress,
   onRecordNew,
 }: ClassRecordingsSectionProps) {
-  if (isLoading) {
+  // Show loading skeleton only if actively loading AND no recordings yet
+  if (isLoading && recordings.length === 0) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color="#6B7C32" />
-        <Text style={styles.loadingText}>Loading recordings...</Text>
+      <View style={styles.list}>
+        <SkeletonList count={3} itemHeight={80} />
       </View>
     );
   }
 
-  if (!recordings.length) {
+  // Show empty state if not loading and no recordings
+  if (!isLoading && !recordings.length) {
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyTitle}>No recordings yet</Text>

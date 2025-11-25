@@ -9,6 +9,7 @@ const {
   generateSummary,
   generateChecklist,
   chatWithLectures,
+  chatWithTranscript,
   updateChecklist,
   toggleChecklistItem,
 } = require('../services/lectureService');
@@ -16,6 +17,7 @@ const {
   getLectureById,
   updateLecture,
   listUserLectures,
+  getAllUserLectures,
   deleteLecture,
   getLectureByTranscriptionId,
   saveChatMessage,
@@ -156,7 +158,20 @@ router.post('/:lectureId/start-transcribing', async (req, res) => {
 router.post('/:lectureId/transcribe-chunk', upload.single('audio'), async (req, res) => {
   try {
     const { lectureId } = req.params;
-    const { userId } = req.body;
+    
+    // DEBUG: Log everything about the request
+    console.log('\n========== TRANSCRIBE CHUNK REQUEST DEBUG ==========');
+    console.log(`[transcribe-chunk] LectureId: ${lectureId}`);
+    console.log(`[transcribe-chunk] Request body keys:`, Object.keys(req.body));
+    console.log(`[transcribe-chunk] Full request body:`, JSON.stringify(req.body, null, 2));
+    
+    const { userId, language } = req.body;
+
+    console.log(`[transcribe-chunk] Parsed values - userId: ${userId}, language: "${language}"`);
+    console.log(`[transcribe-chunk] Language type: ${typeof language}, value: "${language}"`);
+    console.log(`[transcribe-chunk] Language === 'ko': ${language === 'ko'}`);
+    console.log(`[transcribe-chunk] Language === 'en': ${language === 'en'}`);
+    console.log(`[transcribe-chunk] Language === 'auto': ${language === 'auto'}`);
 
     if (!req.file) {
       return res.status(400).json({ error: 'Audio file is required' });
@@ -168,8 +183,22 @@ router.post('/:lectureId/transcribe-chunk', upload.single('audio'), async (req, 
       return res.status(404).json({ error: 'Lecture not found' });
     }
 
+    // Validate language - allow 'auto' for auto-detection, or specific languages
+    // If not provided or invalid, use null to enable auto-detection (preserves original language)
+    const validLanguages = ['en', 'ko', 'auto'];
+    console.log(`[transcribe-chunk] Validating language: "${language}"`);
+    console.log(`[transcribe-chunk] Is language in validLanguages? ${validLanguages.includes(language)}`);
+    
+    const transcriptionLanguage = validLanguages.includes(language) 
+      ? (language === 'auto' ? null : language) 
+      : null; // Default to auto-detection instead of forcing English
+
+    console.log(`[transcribe-chunk] Received language: "${language}", validated to: ${transcriptionLanguage === null ? 'null (auto-detect)' : transcriptionLanguage}`);
+    console.log(`[transcribe-chunk] Will pass to transcribeAudioChunk: ${transcriptionLanguage}`);
+    console.log('==========================================\n');
+
     // Transcribe the chunk
-    const chunkTranscript = await transcribeAudioChunk(req.file.path);
+    const chunkTranscript = await transcribeAudioChunk(req.file.path, transcriptionLanguage);
 
     // Update live transcript (append)
     const currentLiveTranscript = lecture.liveTranscript || '';
@@ -214,7 +243,39 @@ router.post('/:lectureId/transcribe', upload.single('audio'), async (req, res) =
   
   try {
     const { lectureId } = req.params;
-    const { userId, transcript: transcriptText, duration } = req.body;
+    
+    // DEBUG: Log everything about the request - FORCE LOGGING
+    console.error('\n========== TRANSCRIBE REQUEST DEBUG ==========');
+    console.error(`[transcribe] LectureId: ${lectureId}`);
+    console.error(`[transcribe] Request body keys:`, Object.keys(req.body));
+    console.error(`[transcribe] Full request body:`, JSON.stringify(req.body, null, 2));
+    console.error(`[transcribe] Request headers content-type:`, req.headers['content-type']);
+    console.error(`[transcribe] Raw req.body.language:`, req.body.language);
+    console.error(`[transcribe] req.body.language type:`, typeof req.body.language);
+    
+    const { userId, transcript: transcriptText, duration, language } = req.body;
+    
+    // CRITICAL: Check if language is missing or undefined, and log it
+    if (!language || language === undefined) {
+      console.error(`[transcribe] ⚠️  WARNING: Language is missing or undefined!`);
+      console.error(`[transcribe] req.body contents:`, req.body);
+    }
+    
+    // CRITICAL FIX: If language is 'en' but user is speaking Korean, force auto-detection
+    // This prevents Korean speech from being translated to English
+    let actualLanguage = language;
+    if (language === 'en') {
+      console.error(`[transcribe] ⚠️  WARNING: Language is 'en'. If user is speaking Korean, this will translate instead of transcribe!`);
+      console.error(`[transcribe] ⚠️  Consider using 'auto' or 'ko' for Korean speech.`);
+    }
+
+    // Debug: Log the entire request body to see what we're receiving
+    console.log(`[transcribe] Parsed values - userId: ${userId}, language: "${language}", duration: ${duration}`);
+    console.log(`[transcribe] Language type: ${typeof language}, value: "${language}"`);
+    console.log(`[transcribe] Language === 'ko': ${language === 'ko'}`);
+    console.log(`[transcribe] Language === 'en': ${language === 'en'}`);
+    console.log(`[transcribe] Language === 'auto': ${language === 'auto'}`);
+    console.log(`[transcribe] Language truthy check: ${!!language}`);
 
     // Verify lecture ownership
     const lecture = await getLectureById(lectureId, userId);
@@ -224,6 +285,42 @@ router.post('/:lectureId/transcribe', upload.single('audio'), async (req, res) =
       }
       return res.status(404).json({ error: 'Lecture not found' });
     }
+
+    // Validate language - allow 'auto' for auto-detection, or specific languages
+    // If not provided or invalid, use null to enable auto-detection (preserves original language)
+    const validLanguages = ['en', 'ko', 'auto'];
+    console.error(`[transcribe] Validating language: "${language}"`);
+    console.error(`[transcribe] Is language in validLanguages? ${validLanguages.includes(language)}`);
+    
+    // CRITICAL FIX: If language is missing/undefined, default to null (auto-detect) NOT 'en'
+    // This ensures Korean speech is transcribed in Korean, not translated to English
+    let transcriptionLanguage;
+    if (!language || language === undefined || language === null || language === '') {
+      console.error(`[transcribe] ⚠️  Language is missing/undefined/null/empty, using null (auto-detect)`);
+      transcriptionLanguage = null;
+    } else if (validLanguages.includes(language)) {
+      // If 'auto', use null for auto-detection
+      // If 'ko', use 'ko' explicitly
+      // If 'en', use 'en' BUT warn that this might translate Korean to English
+      if (language === 'auto') {
+        transcriptionLanguage = null;
+      } else if (language === 'ko') {
+        transcriptionLanguage = 'ko';
+        console.error(`[transcribe] ✅ Using Korean language - will transcribe in Korean`);
+      } else if (language === 'en') {
+        transcriptionLanguage = 'en';
+        console.error(`[transcribe] ⚠️  Using English language - Korean speech will be TRANSLATED to English!`);
+      } else {
+        transcriptionLanguage = language;
+      }
+    } else {
+      console.error(`[transcribe] ⚠️  Invalid language "${language}", defaulting to null (auto-detect)`);
+      transcriptionLanguage = null; // Default to auto-detect, NOT 'en'
+    }
+
+    console.error(`[transcribe] Received language: "${language}", validated to: ${transcriptionLanguage === null ? 'null (auto-detect)' : transcriptionLanguage}`);
+    console.error(`[transcribe] Will pass to transcribeAudio: ${transcriptionLanguage}`);
+    console.error('==========================================\n');
 
     let transcript;
 
@@ -238,7 +335,7 @@ router.post('/:lectureId/transcribe', upload.single('audio'), async (req, res) =
       });
 
       // Transcribe the audio using OpenAI Whisper
-      transcript = await transcribeAudio(audioFilePath);
+      transcript = await transcribeAudio(audioFilePath, transcriptionLanguage);
 
       // Delete the audio file after transcription (we only keep the transcript)
       if (fs.existsSync(audioFilePath)) {
@@ -720,6 +817,48 @@ router.post('/chat', async (req, res) => {
 });
 
 /**
+ * POST /api/lectures/transcription/:transcriptionId/chat
+ * Chat with AI about a specific transcript (transcript-specific chatbot)
+ */
+router.post('/transcription/:transcriptionId/chat', async (req, res) => {
+  try {
+    const { transcriptionId } = req.params;
+    const { userId, question } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    if (!question) {
+      return res.status(400).json({ error: 'question is required' });
+    }
+
+    // Chat with AI about this specific transcript
+    const response = await chatWithTranscript(transcriptionId, userId, question);
+
+    // Save chat history (optional - could store per transcriptionId)
+    const chatId = await saveChatMessage(
+      userId,
+      question,
+      response.answer,
+      [response.lectureTitle] // Reference the specific lecture
+    );
+
+    res.json({
+      success: true,
+      chatId,
+      answer: response.answer,
+      transcriptionId: response.transcriptionId,
+      lectureId: response.lectureId,
+      lecturesReferenced: [response.lectureTitle],
+    });
+  } catch (error) {
+    console.error('Error in transcript chat:', error);
+    res.status(500).json({ error: error.message || 'Failed to process transcript chat' });
+  }
+});
+
+/**
  * GET /api/lectures/chat/history
  * Get chat history for a user
  */
@@ -896,6 +1035,129 @@ router.get('/user/:userId', async (req, res) => {
 });
 
 /**
+ * GET /api/lectures/class/:lectureId/recordings
+ * Get all recordings (lectures) for a specific class
+ * Matches lectures by title or description to find related recordings
+ */
+router.get('/class/:lectureId/recordings', async (req, res) => {
+  try {
+    const { lectureId } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    // Get the class lecture to find matching recordings
+    const classLecture = await getLectureById(lectureId, userId);
+    if (!classLecture) {
+      return res.status(404).json({ error: 'Class not found' });
+    }
+
+    // Get all user lectures
+    const allLectures = await getAllUserLectures(userId);
+
+    // Filter lectures that match this class
+    // Match by exact title or similar description (same day/time/place)
+    const matchingLectures = allLectures.filter(lecture => {
+      // Exact title match
+      if (lecture.title === classLecture.title) {
+        return true;
+      }
+
+      // Match by description (same day/time/place)
+      if (classLecture.description && lecture.description) {
+        const classDesc = classLecture.description.toLowerCase();
+        const lectureDesc = lecture.description.toLowerCase();
+        
+        // Extract day, time, place from descriptions
+        const extractDay = (desc) => {
+          const dayMatch = desc.match(/day:\s*([^|]+)/i);
+          return dayMatch ? dayMatch[1].trim() : null;
+        };
+        
+        const extractTime = (desc) => {
+          const timeMatch = desc.match(/time:\s*([^|]+)/i);
+          return timeMatch ? timeMatch[1].trim() : null;
+        };
+        
+        const extractPlace = (desc) => {
+          const placeMatch = desc.match(/place:\s*([^|]+)/i);
+          return placeMatch ? placeMatch[1].trim() : null;
+        };
+
+        const classDay = extractDay(classDesc);
+        const classTime = extractTime(classDesc);
+        const classPlace = extractPlace(classDesc);
+
+        const lectureDay = extractDay(lectureDesc);
+        const lectureTime = extractTime(lectureDesc);
+        const lecturePlace = extractPlace(lectureDesc);
+
+        // Match if day and time are the same (most reliable)
+        if (classDay && lectureDay && classTime && lectureTime) {
+          if (classDay === lectureDay && classTime === lectureTime) {
+            return true;
+          }
+        }
+
+        // Match if place and time are the same
+        if (classPlace && lecturePlace && classTime && lectureTime) {
+          if (classPlace === lecturePlace && classTime === lectureTime) {
+            return true;
+          }
+        }
+      }
+
+      // Match by tags (day tags)
+      if (classLecture.tags && lecture.tags && classLecture.tags.length > 0) {
+        const commonTags = classLecture.tags.filter(tag => lecture.tags.includes(tag));
+        if (commonTags.length > 0 && lecture.title.toLowerCase().includes(classLecture.title.toLowerCase().substring(0, 5))) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    // Convert to recordings format
+    const recordings = matchingLectures
+      .filter(lecture => lecture.transcript || lecture.status === 'completed' || lecture.status === 'processing')
+      .map(lecture => {
+        const createdAt = lecture.createdAt 
+          ? (typeof lecture.createdAt === 'string' 
+              ? lecture.createdAt 
+              : new Date(lecture.createdAt._seconds * 1000).toISOString())
+          : new Date().toISOString();
+
+        return {
+          id: lecture.id,
+          title: lecture.title,
+          recordedAt: createdAt,
+          duration: lecture.duration || 0,
+          status: lecture.status === 'completed' ? 'ready' : lecture.status === 'processing' ? 'processing' : 'failed',
+          transcriptId: lecture.transcriptionId,
+        };
+      })
+      .sort((a, b) => {
+        // Sort by date, newest first
+        const dateA = new Date(a.recordedAt || 0).getTime();
+        const dateB = new Date(b.recordedAt || 0).getTime();
+        return dateB - dateA;
+      });
+
+    res.json({
+      success: true,
+      recordings,
+      count: recordings.length,
+    });
+  } catch (error) {
+    console.error('Error fetching class recordings:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch class recordings' });
+  }
+});
+
+/**
  * GET /api/lectures/transcription/:transcriptionId/transcript
  * Get transcript by transcription ID
  */
@@ -1006,28 +1268,46 @@ router.get('/transcription/:transcriptionId/checklist', async (req, res) => {
  */
 router.delete('/:lectureId', async (req, res) => {
   try {
+    console.log('[DELETE /api/lectures/:lectureId] Request received');
     const { lectureId } = req.params;
     const { userId } = req.query;
 
+    console.log('[DELETE] lectureId:', lectureId);
+    console.log('[DELETE] userId:', userId);
+    console.log('[DELETE] req.params:', req.params);
+    console.log('[DELETE] req.query:', req.query);
+
     if (!userId) {
+      console.error('[DELETE] ❌ userId is missing');
       return res.status(400).json({ error: 'userId is required' });
     }
 
+    if (!lectureId) {
+      console.error('[DELETE] ❌ lectureId is missing');
+      return res.status(400).json({ error: 'lectureId is required' });
+    }
+
+    console.log('[DELETE] Verifying lecture ownership...');
     // Verify lecture ownership
     const lecture = await getLectureById(lectureId, userId);
     if (!lecture) {
+      console.error('[DELETE] ❌ Lecture not found or user does not own it');
       return res.status(404).json({ error: 'Lecture not found' });
     }
 
+    console.log('[DELETE] ✅ Lecture found. Proceeding with deletion...');
     // Delete lecture record (no audio files to delete since we don't save them)
     await deleteLecture(lectureId, userId);
 
+    console.log('[DELETE] ✅ Lecture deleted successfully');
     res.json({
       success: true,
       message: 'Lecture deleted successfully',
     });
   } catch (error) {
-    console.error('Error deleting lecture:', error);
+    console.error('[DELETE] ❌ Error deleting lecture:', error);
+    console.error('[DELETE] Error message:', error.message);
+    console.error('[DELETE] Error stack:', error.stack);
     res.status(500).json({ error: error.message || 'Failed to delete lecture' });
   }
 });

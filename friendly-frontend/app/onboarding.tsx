@@ -58,9 +58,9 @@ export default function OnboardingRoute() {
   };
 
   const handleGetStarted = () => {
-    console.log('Get Started button clicked - navigating to dashboard');
-    // Navigate to main app
-    router.replace('/(tabs)');
+    console.log('Get Started button clicked - navigating to classes screen');
+    // Navigate to main app - Classes screen
+    router.replace('/(tabs)/explore');
   };
 
   const handleBack = () => {

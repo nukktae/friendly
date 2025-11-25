@@ -1,10 +1,10 @@
 import { useApp } from '@/src/context/AppContext';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import {
   CommunityPost,
-  addComment,
   checkSchoolVerification,
   createPost,
   deletePost,
@@ -92,11 +92,6 @@ const CommunityPage: React.FC<CommunityPageProps> = ({
   const [newPostCategory, setNewPostCategory] = useState('General');
   const [newPostImageUri, setNewPostImageUri] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
-  
-  // Comments
-  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
-  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
-  const [postingComment, setPostingComment] = useState<string | null>(null);
   
   // Edit post
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -275,41 +270,8 @@ const CommunityPage: React.FC<CommunityPageProps> = ({
     }
   };
 
-  const handleAddComment = async (postId: string) => {
-    if (!user?.uid) {
-      Alert.alert('Error', 'Please log in to comment');
-      return;
-    }
-
-    const commentContent = commentInputs[postId]?.trim();
-    if (!commentContent) {
-      Alert.alert('Error', 'Please enter a comment');
-      return;
-    }
-
-    try {
-      setPostingComment(postId);
-      await addComment(postId, {
-        userId: user.uid,
-        content: commentContent,
-      });
-      
-      // Reload posts to get updated comments
-      await loadPosts();
-      
-      // Clear comment input
-      setCommentInputs({ ...commentInputs, [postId]: '' });
-      setExpandedComments(new Set([...expandedComments, postId]));
-    } catch (error: any) {
-      if (error.message?.includes('verification')) {
-        Alert.alert('Verification Required', 'You need to verify your school email to comment.');
-        setShowVerificationModal(true);
-      } else {
-        Alert.alert('Error', error.message || 'Failed to add comment');
-      }
-    } finally {
-      setPostingComment(null);
-    }
+  const handleNavigateToPost = (postId: string) => {
+    router.push(`/post/${postId}`);
   };
 
   const handleEditPost = (post: CommunityPost) => {
@@ -382,16 +344,6 @@ const CommunityPage: React.FC<CommunityPageProps> = ({
         },
       ]
     );
-  };
-
-  const toggleComments = (postId: string) => {
-    const newExpanded = new Set(expandedComments);
-    if (newExpanded.has(postId)) {
-      newExpanded.delete(postId);
-    } else {
-      newExpanded.add(postId);
-    }
-    setExpandedComments(newExpanded);
   };
 
   const isPostLiked = (post: CommunityPost): boolean => {
@@ -544,14 +496,9 @@ const CommunityPage: React.FC<CommunityPageProps> = ({
                   key={postId}
                   post={post}
                   isLiked={liked}
-                  showComments={expandedComments.has(postId)}
-                  commentInput={commentInputs[postId] || ''}
-                  postingComment={postingComment === postId}
                   isOwnPost={isOwnPost}
                   onLike={() => handleLike(postId)}
-                  onToggleComments={() => toggleComments(postId)}
-                  onCommentChange={(text) => setCommentInputs({ ...commentInputs, [postId]: text })}
-                  onAddComment={() => handleAddComment(postId)}
+                  onNavigate={handleNavigateToPost}
                   onEdit={isOwnPost ? () => handleEditPost(post) : undefined}
                   onDelete={isOwnPost ? () => handleDeletePost(postId) : undefined}
                   formatTimestamp={formatTimestamp}
@@ -587,70 +534,75 @@ const CommunityPage: React.FC<CommunityPageProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: '#FFFFFF',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingTop: 48,
     paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E7EB',
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#000',
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#111827',
+    letterSpacing: -0.5,
   },
   newPostButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#f8f8f8',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F9FAFB',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#E5E7EB',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   loadingText: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   errorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fee2e2',
-    borderBottomWidth: 1,
-    borderBottomColor: '#fecaca',
+    backgroundColor: '#FEE2E2',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#FECACA',
   },
   errorText: {
     flex: 1,
-    fontSize: 14,
-    color: '#dc2626',
+    fontSize: 13,
+    color: '#DC2626',
+    fontWeight: '500',
   },
   retryText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#dc2626',
+    color: '#DC2626',
   },
   feed: {
     flex: 1,
   },
   feedContent: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
+    paddingHorizontal: 0,
+    paddingTop: 0,
     paddingBottom: 100,
+    backgroundColor: '#FFFFFF',
   },
   emptyState: {
     alignItems: 'center',
@@ -658,37 +610,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   emptyIcon: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: '#f8f8f8',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F3F4F6',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
-    color: '#000',
-    marginBottom: 8,
+    color: '#111827',
+    marginBottom: 6,
+    letterSpacing: -0.3,
   },
   emptyText: {
     fontSize: 14,
-    color: '#666',
+    color: '#6B7280',
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
+    fontWeight: '400',
   },
   verifyButton: {
-    marginTop: 16,
-    paddingHorizontal: 24,
+    marginTop: 12,
+    paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: '#000',
-    borderRadius: 8,
+    backgroundColor: '#111827',
+    borderRadius: 10,
   },
   verifyButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
 });
 

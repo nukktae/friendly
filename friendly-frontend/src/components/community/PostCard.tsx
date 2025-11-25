@@ -3,19 +3,13 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CommunityPost } from '@/src/services/community/communityService';
-import { CommentSection } from './CommentSection';
 
 interface PostCardProps {
   post: CommunityPost;
   isLiked: boolean;
-  showComments: boolean;
-  commentInput: string;
-  postingComment: boolean;
   isOwnPost: boolean;
   onLike: () => void;
-  onToggleComments: () => void;
-  onCommentChange: (text: string) => void;
-  onAddComment: () => void;
+  onNavigate: (postId: string) => void;
   onEdit?: () => void;
   onDelete?: () => void;
   formatTimestamp: (timestamp: any) => string;
@@ -25,14 +19,9 @@ interface PostCardProps {
 export const PostCard: React.FC<PostCardProps> = ({
   post,
   isLiked,
-  showComments,
-  commentInput,
-  postingComment,
   isOwnPost,
   onLike,
-  onToggleComments,
-  onCommentChange,
-  onAddComment,
+  onNavigate,
   onEdit,
   onDelete,
   formatTimestamp,
@@ -41,54 +30,79 @@ export const PostCard: React.FC<PostCardProps> = ({
   const postId = post.id || post.postId || '';
   const imageUrl = getImageUrl(post.imageUrl);
 
+  const handleCardPress = () => {
+    onNavigate(postId);
+  };
+
+  const handleLikePress = (e: any) => {
+    e.stopPropagation();
+    onLike();
+  };
+
+  const handleEditPress = (e: any) => {
+    e.stopPropagation();
+    onEdit?.();
+  };
+
+  const handleDeletePress = (e: any) => {
+    e.stopPropagation();
+    onDelete?.();
+  };
+
   return (
-    <View style={styles.postCard}>
+    <TouchableOpacity 
+      style={styles.postCard}
+      onPress={handleCardPress}
+      activeOpacity={0.7}
+    >
       {/* Post Header */}
       <View style={styles.postHeader}>
         <AvatarWithInitials
           src={post.author.avatar}
           name={post.author.name}
-          size={44}
+          size={36}
         />
         
         <View style={styles.postAuthorInfo}>
           <View style={styles.authorRow}>
-            <Text style={styles.authorName} numberOfLines={1}>
-              {post.author.name}
-            </Text>
-            <View style={styles.authorActions}>
+            <View style={styles.authorNameContainer}>
+              <Text style={styles.authorName} numberOfLines={1}>
+                {post.author.name}
+              </Text>
               <View style={styles.postCategoryChip}>
                 <Text style={styles.postCategoryChipText}>
                   {post.category}
                 </Text>
               </View>
-              {isOwnPost && (
-                <View style={styles.postMenu}>
-                  {onEdit && (
-                    <TouchableOpacity
-                      style={styles.menuButton}
-                      onPress={onEdit}
-                    >
-                      <Ionicons name="create-outline" size={18} color="#666" />
-                    </TouchableOpacity>
-                  )}
-                  {onDelete && (
-                    <TouchableOpacity
-                      style={styles.menuButton}
-                      onPress={onDelete}
-                    >
-                      <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
             </View>
+            {isOwnPost && (
+              <View style={styles.postMenu}>
+                {onEdit && (
+                  <TouchableOpacity
+                    style={styles.menuButton}
+                    onPress={handleEditPress}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="create-outline" size={15} color="#6B7280" />
+                  </TouchableOpacity>
+                )}
+                {onDelete && (
+                  <TouchableOpacity
+                    style={styles.menuButton}
+                    onPress={handleDeletePress}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="trash-outline" size={15} color="#EF4444" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
           
           <View style={styles.metaRow}>
             {post.author.university && (
               <>
-                <Ionicons name="school-outline" size={12} color="#9ca3af" />
+                <Ionicons name="school-outline" size={10} color="#9CA3AF" />
                 <Text style={styles.metaText} numberOfLines={1}>
                   {post.author.university}
                 </Text>
@@ -103,7 +117,9 @@ export const PostCard: React.FC<PostCardProps> = ({
       </View>
 
       {/* Post Content */}
-      <Text style={styles.postContent}>{post.content}</Text>
+      <Text style={styles.postContent} numberOfLines={3}>
+        {post.content}
+      </Text>
 
       {/* Post Image */}
       {imageUrl && (
@@ -119,56 +135,45 @@ export const PostCard: React.FC<PostCardProps> = ({
       {/* Post Actions */}
       <View style={styles.postActions}>
         <TouchableOpacity 
-          onPress={onLike}
+          onPress={handleLikePress}
           style={styles.actionButton}
+          activeOpacity={0.6}
         >
           <Ionicons 
             name={isLiked ? "heart" : "heart-outline"} 
-            size={20} 
-            color={isLiked ? "#ef4444" : "#666"} 
+            size={16} 
+            color={isLiked ? "#EF4444" : "#9CA3AF"} 
           />
-          <Text style={[styles.actionText, isLiked && styles.actionTextActive]}>
-            {post.likesCount || 0}
-          </Text>
+          {(post.likesCount || 0) > 0 && (
+            <Text style={[styles.actionText, isLiked && styles.actionTextActive]}>
+              {post.likesCount || 0}
+            </Text>
+          )}
         </TouchableOpacity>
         
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={onToggleComments}
-        >
-          <Ionicons name="chatbubble-outline" size={20} color="#666" />
-          <Text style={styles.actionText}>{post.commentsCount || 0}</Text>
-        </TouchableOpacity>
+        <View style={styles.actionButton}>
+          <Ionicons name="chatbubble-outline" size={16} color="#9CA3AF" />
+          {(post.commentsCount || 0) > 0 && (
+            <Text style={styles.actionText}>{post.commentsCount || 0}</Text>
+          )}
+        </View>
       </View>
-
-      {/* Comments Section */}
-      {showComments && (
-        <CommentSection
-          post={post}
-          commentInput={commentInput}
-          postingComment={postingComment}
-          onCommentChange={onCommentChange}
-          onAddComment={onAddComment}
-          formatTimestamp={formatTimestamp}
-        />
-      )}
-    </View>
+    </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
   postCard: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#F3F4F6',
   },
   postHeader: {
     flexDirection: 'row',
-    marginBottom: 16,
-    gap: 12,
+    marginBottom: 10,
+    gap: 10,
   },
   postAuthorInfo: {
     flex: 1,
@@ -177,19 +182,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 3,
   },
-  authorName: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#000',
-    marginRight: 8,
-  },
-  authorActions: {
+  authorNameContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    flex: 1,
+  },
+  authorName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    letterSpacing: -0.3,
   },
   postMenu: {
     flexDirection: 'row',
@@ -200,71 +205,70 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   postCategoryChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    backgroundColor: '#f8f8f8',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: '#F3F4F6',
   },
   postCategoryChipText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
-    letterSpacing: 0.5,
-    color: '#000',
+    letterSpacing: 0.3,
+    color: '#6B7280',
+    textTransform: 'uppercase',
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   metaText: {
-    fontSize: 13,
-    color: '#666',
-    fontWeight: '500',
+    fontSize: 11,
+    color: '#9CA3AF',
+    fontWeight: '400',
   },
   metaDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: '#999',
+    width: 2,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#D1D5DB',
   },
   postContent: {
-    fontSize: 15,
-    color: '#000',
-    lineHeight: 24,
-    marginBottom: 16,
+    fontSize: 14,
+    color: '#111827',
+    lineHeight: 20,
+    marginBottom: 10,
+    letterSpacing: -0.2,
   },
   postImageContainer: {
-    marginBottom: 16,
+    marginBottom: 10,
     borderRadius: 8,
     overflow: 'hidden',
   },
   postImage: {
     width: '100%',
-    height: 200,
-    backgroundColor: '#f8f8f8',
+    height: 180,
+    backgroundColor: '#FAFAFA',
   },
   postActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 20,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    gap: 18,
+    paddingTop: 4,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   actionText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
-    color: '#666',
+    color: '#9CA3AF',
+    letterSpacing: -0.2,
   },
   actionTextActive: {
-    color: '#ef4444',
+    color: '#EF4444',
   },
 });
 

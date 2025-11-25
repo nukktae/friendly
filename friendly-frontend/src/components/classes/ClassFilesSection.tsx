@@ -1,13 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import {
-  ActivityIndicator,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { ClassFile } from '@/src/types';
+import { SkeletonList, SkeletonCard } from '@/src/components/common/Skeleton';
 
 interface ClassFilesSectionProps {
   files: ClassFile[];
@@ -22,16 +22,17 @@ export function ClassFilesSection({
   onFilePress,
   onUploadPress,
 }: ClassFilesSectionProps) {
-  if (isLoading) {
+  // Show loading skeleton only if actively loading AND no files yet
+  if (isLoading && files.length === 0) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color="#6B7C32" />
-        <Text style={styles.loadingText}>Loading files...</Text>
+      <View style={styles.list}>
+        <SkeletonList count={3} itemHeight={80} />
       </View>
     );
   }
 
-  if (!files.length) {
+  // Show empty state if not loading and no files
+  if (!isLoading && !files.length) {
     return (
       <View style={styles.emptyState}>
         <View style={styles.emptyIcon}>
