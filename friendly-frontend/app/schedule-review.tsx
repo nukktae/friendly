@@ -57,8 +57,37 @@ export default function ScheduleReviewRoute() {
     router.back();
   };
 
-  const handleSaveSuccess = () => {
-    router.replace('/(tabs)');
+  const handleSaveSuccess = (result?: {
+    success: boolean;
+    scheduleId: string;
+    userId: string;
+    lecturesCreated: Array<{
+      lectureId: string;
+      title: string;
+      day: string;
+      place: string | null;
+      time: string;
+    }>;
+    count: number;
+    message: string;
+  }) => {
+    // Navigate to the first created class if available
+    if (result && result.lecturesCreated && result.lecturesCreated.length > 0) {
+      const firstLecture = result.lecturesCreated[0];
+      router.replace({
+        pathname: '/class/[id]',
+        params: {
+          id: firstLecture.lectureId,
+          title: firstLecture.title,
+          time: firstLecture.time,
+          type: 'class',
+          location: firstLecture.place || '',
+        },
+      });
+    } else {
+      // Fallback to tabs if no lectures were created
+      router.replace('/(tabs)');
+    }
   };
 
   // Use user.uid as fallback; allow guest saves when not signed in

@@ -29,7 +29,20 @@ interface ScheduleReviewScreenProps {
   userId: string;
   userProfile?: any;
   onBack: () => void;
-  onSaveSuccess: () => void;
+  onSaveSuccess: (result?: {
+    success: boolean;
+    scheduleId: string;
+    userId: string;
+    lecturesCreated: Array<{
+      lectureId: string;
+      title: string;
+      day: string;
+      place: string | null;
+      time: string;
+    }>;
+    count: number;
+    message: string;
+  }) => void;
 }
 
 export default function ScheduleReviewScreen({
@@ -167,16 +180,8 @@ export default function ScheduleReviewScreen({
       // Call the confirm schedule API
       const result = await scheduleAIService.confirmSchedule(scheduleId, userId);
       
-      Alert.alert(
-        'Success', 
-        `Schedule confirmed successfully! ${result.count} lecture(s) created.`, 
-        [
-          {
-            text: 'OK',
-            onPress: onSaveSuccess
-          }
-        ]
-      );
+      // Navigate immediately after successful save
+      onSaveSuccess(result);
     } catch (error) {
       console.error('Failed to confirm schedule:', error);
       

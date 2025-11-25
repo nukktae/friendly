@@ -28,6 +28,7 @@ app.use('/api/schedule', require('./routes/schedules'));
 app.use('/api/calendar', require('./routes/calendar'));
 app.use('/api/lectures', require('./routes/lectures'));
 app.use('/api/community', require('./routes/community'));
+app.use('/api/documents', require('./routes/document'));
 
 app.post("/chat", async (req, res) => {
   try {

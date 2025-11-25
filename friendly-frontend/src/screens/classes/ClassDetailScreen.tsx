@@ -1,8 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useRef, useState } from 'react';
-import { Animated, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-
-const { width: screenWidth } = Dimensions.get('window');
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ClassAssignmentsSection,
+  ClassFilesSection,
+  ClassNotesSection,
+  ClassRecordingsSection,
+} from '@/src/components/classes';
+import {
+  fetchClassAssignments,
+  fetchClassFiles,
+  fetchClassNotes,
+  fetchClassRecordings,
+} from '@/src/services/classes/classResourcesService';
+import { ClassAssignment, ClassFile, ClassNote, ClassRecording } from '@/src/types';
 
 interface ClassDetailScreenProps {
   id: string;
@@ -16,6 +27,8 @@ interface ClassDetailScreenProps {
   onRecordPress?: () => void;
 }
 
+type TabKey = 'files' | 'recordings' | 'assignments' | 'notes';
+
 export default function ClassDetailScreen({
   id,
   title,
@@ -28,20 +41,62 @@ export default function ClassDetailScreen({
   onRecordPress,
 }: ClassDetailScreenProps) {
   const scrollY = useRef(new Animated.Value(0)).current;
-  const [activeTab, setActiveTab] = useState<'files' | 'notes'>('files');
-  
-  // Mock PDF files data
-  const pdfFiles = [
-    { id: '1', name: 'Lecture 1 - Introduction', size: '2.4 MB', date: 'Sep 15, 2025', pages: 24 },
-    { id: '2', name: 'Week 1 Assignment', size: '1.2 MB', date: 'Sep 18, 2025', pages: 5 },
-    { id: '3', name: 'Reading Material - Chapter 1', size: '4.8 MB', date: 'Sep 20, 2025', pages: 45 },
-    { id: '4', name: 'Study Guide', size: '890 KB', date: 'Sep 22, 2025', pages: 8 },
-  ];
+  const isMountedRef = useRef(true);
+  const [activeTab, setActiveTab] = useState<TabKey>('files');
+  const [files, setFiles] = useState<ClassFile[]>([]);
+  const [recordings, setRecordings] = useState<ClassRecording[]>([]);
+  const [assignments, setAssignments] = useState<ClassAssignment[]>([]);
+  const [notes, setNotes] = useState<ClassNote[]>([]);
+  const [isLoadingResources, setIsLoadingResources] = useState(false);
+  const [resourcesError, setResourcesError] = useState<string | null>(null);
 
-  // Mock notes data
-  const notes = [
-    { id: '1', title: 'Class Notes - Week 1', content: 'Key concepts from introduction...', date: 'Sep 15' },
-    { id: '2', title: 'Important Points', content: 'Remember to focus on...', date: 'Sep 18' },
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const loadResources = useCallback(async () => {
+    if (!id) return;
+
+    setIsLoadingResources(true);
+    setResourcesError(null);
+
+    try {
+      const [filesData, recordingsData, assignmentsData, notesData] = await Promise.all([
+        fetchClassFiles(id),
+        fetchClassRecordings(id),
+        fetchClassAssignments(id),
+        fetchClassNotes(id),
+      ]);
+
+      if (!isMountedRef.current) return;
+
+      setFiles(filesData);
+      setRecordings(recordingsData);
+      setAssignments(assignmentsData);
+      setNotes(notesData);
+    } catch (error) {
+      if (!isMountedRef.current) return;
+
+      const message =
+        error instanceof Error ? error.message : 'Failed to load class resources';
+      setResourcesError(message);
+    } finally {
+      if (!isMountedRef.current) return;
+      setIsLoadingResources(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    loadResources();
+  }, [loadResources]);
+
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: 'files', label: `Files (${files.length})` },
+    { key: 'recordings', label: `Recordings (${recordings.length})` },
+    { key: 'assignments', label: `Assignments (${assignments.length})` },
+    { key: 'notes', label: `Notes (${notes.length})` },
   ];
 
   // Calculate deadline
@@ -187,87 +242,57 @@ export default function ClassDetailScreen({
 
         {/* Tabs */}
         <View style={styles.tabsContainer}>
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'files' && styles.activeTab]}
-            onPress={() => setActiveTab('files')}
-          >
-            <Text style={[styles.tabText, activeTab === 'files' && styles.activeTabText]}>
-              Files ({pdfFiles.length})
-            </Text>
-            {activeTab === 'files' && <View style={styles.tabIndicator} />}
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'notes' && styles.activeTab]}
-            onPress={() => setActiveTab('notes')}
-          >
-            <Text style={[styles.tabText, activeTab === 'notes' && styles.activeTabText]}>
-              Notes ({notes.length})
-            </Text>
-            {activeTab === 'notes' && <View style={styles.tabIndicator} />}
-          </TouchableOpacity>
+          {tabs.map((tab) => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tab, activeTab === tab.key && styles.activeTab]}
+              onPress={() => setActiveTab(tab.key)}
+            >
+              <Text style={[styles.tabText, activeTab === tab.key && styles.activeTabText]}>
+                {tab.label}
+              </Text>
+              {activeTab === tab.key && <View style={styles.tabIndicator} />}
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* Content */}
-        {activeTab === 'files' ? (
-          <View style={styles.filesContainer}>
-            {pdfFiles.map((file, index) => (
-              <TouchableOpacity 
-                key={file.id} 
-                style={styles.fileCard}
-                activeOpacity={0.7}
-              >
-                <View style={styles.fileIconContainer}>
-                  <Ionicons name="document-text" size={24} color="#ef4444" />
-                  <View style={styles.pdfBadge}>
-                    <Text style={styles.pdfBadgeText}>PDF</Text>
-                  </View>
-                </View>
-                
-                <View style={styles.fileInfo}>
-                  <Text style={styles.fileName}>{file.name}</Text>
-                  <View style={styles.fileMeta}>
-                    <Text style={styles.fileMetaText}>{file.pages} pages</Text>
-                    <View style={styles.metaDot} />
-                    <Text style={styles.fileMetaText}>{file.size}</Text>
-                    <View style={styles.metaDot} />
-                    <Text style={styles.fileMetaText}>{file.date}</Text>
-                  </View>
-                </View>
-
-                <TouchableOpacity style={styles.fileAction}>
-                  <Ionicons name="ellipsis-horizontal" size={20} color="#9ca3af" />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
-
-            {/* Empty State */}
-            {pdfFiles.length === 0 && (
-              <View style={styles.emptyState}>
-                <View style={styles.emptyIcon}>
-                  <Ionicons name="document-outline" size={48} color="#d1d5db" />
-                </View>
-                <Text style={styles.emptyTitle}>No files yet</Text>
-                <Text style={styles.emptyText}>Upload PDFs, notes, or other materials</Text>
-                <TouchableOpacity style={styles.emptyButton}>
-                  <Text style={styles.emptyButtonText}>Upload File</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        ) : (
-          <View style={styles.notesContainer}>
-            {notes.map((note) => (
-              <TouchableOpacity key={note.id} style={styles.noteCard}>
-                <View style={styles.noteHeader}>
-                  <Text style={styles.noteTitle}>{note.title}</Text>
-                  <Text style={styles.noteDate}>{note.date}</Text>
-                </View>
-                <Text style={styles.noteContent} numberOfLines={2}>{note.content}</Text>
-              </TouchableOpacity>
-            ))}
+        {resourcesError && (
+          <View style={styles.errorBanner}>
+            <Ionicons name="alert-circle" size={16} color="#92400e" />
+            <Text style={styles.errorText} numberOfLines={2}>
+              {resourcesError}
+            </Text>
+            <TouchableOpacity onPress={loadResources}>
+              <Text style={styles.errorRetry}>Retry</Text>
+            </TouchableOpacity>
           </View>
         )}
+
+        {/* Content */}
+        <View style={styles.tabContent}>
+          {activeTab === 'files' && (
+            <ClassFilesSection files={files} isLoading={isLoadingResources} />
+          )}
+
+          {activeTab === 'recordings' && (
+            <ClassRecordingsSection
+              recordings={recordings}
+              isLoading={isLoadingResources}
+              onRecordNew={onRecordPress}
+            />
+          )}
+
+          {activeTab === 'assignments' && (
+            <ClassAssignmentsSection
+              assignments={assignments}
+              isLoading={isLoadingResources}
+            />
+          )}
+
+          {activeTab === 'notes' && (
+            <ClassNotesSection notes={notes} isLoading={isLoadingResources} />
+          )}
+        </View>
 
         <View style={{ height: 100 }} />
       </Animated.ScrollView>
@@ -496,145 +521,29 @@ const styles = StyleSheet.create({
     backgroundColor: '#6B7C32',
     borderRadius: 1,
   },
-  filesContainer: {
-    paddingHorizontal: 20,
-  },
-  fileCard: {
+  errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#f3f4f6',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  fileIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: '#fef2f2',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    position: 'relative',
-  },
-  pdfBadge: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    backgroundColor: '#ef4444',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  pdfBadgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  fileInfo: {
-    flex: 1,
-  },
-  fileName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  fileMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  fileMetaText: {
-    fontSize: 12,
-    color: '#9ca3af',
-  },
-  metaDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: '#d1d5db',
-  },
-  fileAction: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#f9fafb',
-    justifyContent: 'center',
-    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 20,
     marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#9ca3af',
-    marginBottom: 24,
-  },
-  emptyButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    backgroundColor: '#6B7C32',
-    borderRadius: 12,
-  },
-  emptyButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  notesContainer: {
-    paddingHorizontal: 20,
-  },
-  noteCard: {
-    padding: 16,
+    padding: 12,
     backgroundColor: '#fffbeb',
-    borderRadius: 16,
-    marginBottom: 12,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#fef3c7',
   },
-  noteHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  noteTitle: {
+  errorText: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  noteDate: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#92400e',
-    fontWeight: '500',
   },
-  noteContent: {
-    fontSize: 14,
-    color: '#78350f',
-    lineHeight: 20,
+  errorRetry: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#92400e',
+  },
+  tabContent: {
+    minHeight: 120,
   },
 });

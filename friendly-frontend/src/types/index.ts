@@ -6,6 +6,7 @@
 // Re-export all types from domain-specific files
 export * from './auth.types';
 export * from './class.types';
+export * from './classResources.types';
 
 // Note: As the app grows, consider adding more domain-specific type files:
 // - schedule.types.ts
