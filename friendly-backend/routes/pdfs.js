@@ -99,12 +99,18 @@ router.post('/', upload.single('pdf'), async (req, res) => {
     }
 
     // Upload to Firebase Storage
-    const { storagePath, downloadUrl } = await uploadPDF(
+    const { storagePath } = await uploadPDF(
       filePath,
       userId,
       fileId,
       classId || null
     );
+    
+    // Generate download URL using request host (works for mobile devices)
+    const protocol = req.protocol || 'http';
+    const host = req.get('host') || req.hostname || 'localhost:4000';
+    const baseUrl = `${protocol}://${host}`;
+    const downloadUrl = `${baseUrl}/uploads/${storagePath}`;
 
     // Create Firestore document
     const pdfData = {
@@ -197,7 +203,14 @@ router.get('/:fileId/download', async (req, res) => {
       return res.status(404).json({ error: 'PDF not found' });
     }
 
-    const downloadUrl = await getDownloadURL(pdfFile.storagePath);
+    // Use request host for URL generation (works for mobile devices)
+    const protocol = req.protocol || 'http';
+    const host = req.get('host') || req.hostname || 'localhost:4000';
+    const baseUrl = `${protocol}://${host}`;
+    
+    // Generate download URL using request host instead of localhost
+    const storagePath = pdfFile.storagePath;
+    const downloadUrl = `${baseUrl}/uploads/${storagePath}`;
 
     res.json({
       success: true,

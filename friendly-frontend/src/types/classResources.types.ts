@@ -36,3 +36,17 @@ export interface ClassNote {
   updatedAt?: string;
 }
 
+export interface ClassExam {
+  id: string;
+  classId?: string;
+  title: string;
+  description?: string;
+  date?: string;
+  durationMinutes?: number;
+  location?: string;
+  instructions?: string;
+  status: 'upcoming' | 'completed' | 'missed' | 'in_progress';
+  createdAt?: string;
+  updatedAt?: string;
+}
+

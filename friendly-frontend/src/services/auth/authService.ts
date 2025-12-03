@@ -76,21 +76,40 @@ export class AuthService {
       const idToken = await getIdToken(userCredential.user);
       
       // Call backend login endpoint with ID token
-      const response = await fetch(`${API_BASE}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          idToken, // Use idToken for backend verification
-        }),
-      });
+      let response: Response;
+      try {
+        response = await fetch(`${API_BASE}/api/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            idToken, // Use idToken for backend verification
+          }),
+        });
+      } catch (fetchError: any) {
+        // Network error - backend might not be running
+        console.warn('Backend login request failed (network error). Backend may be unavailable:', fetchError);
+        // Continue with Firebase auth only - backend verification failed but Firebase auth succeeded
+        // This allows the app to work even if backend is temporarily unavailable
+        console.log('Continuing with Firebase authentication only. Backend features may be limited.');
+        return;
+      }
 
       if (!response.ok) {
-        const error = await response.json();
-        // Sign out from Firebase if backend login fails
-        await signOut(auth);
-        throw new Error(error.error || 'Login failed');
+        const error = await response.json().catch(() => ({ error: 'Backend login failed' }));
+        const errorMessage = error.error || 'Backend login failed';
+        
+        // Only sign out if it's an authentication error (401), not server errors (500, etc.)
+        if (response.status === 401) {
+          console.warn('Backend authentication failed (401). Signing out from Firebase.');
+          await signOut(auth);
+          throw new Error(errorMessage || 'Invalid credentials');
+        } else {
+          // For other errors (500, 503, etc.), continue with Firebase auth
+          console.warn(`Backend login failed with status ${response.status}. Continuing with Firebase auth:`, errorMessage);
+          return;
+        }
       }
 
       // Auth state will be updated by onAuthStateChanged listener
@@ -106,6 +125,11 @@ export class AuthService {
         throw new Error('Incorrect password. Please try again.');
       } else if (error.code === 'auth/too-many-requests') {
         throw new Error('Too many failed attempts. Please try again later.');
+      } else if (error.message?.includes('Network request failed') || error.message?.includes('Failed to fetch')) {
+        // Network error - backend unavailable but Firebase auth succeeded
+        console.warn('Backend unavailable, but Firebase authentication succeeded. Continuing with local auth.');
+        // Don't throw - allow Firebase auth to proceed
+        return;
       } else {
         throw new Error(error.message || 'Login failed. Please try again.');
       }

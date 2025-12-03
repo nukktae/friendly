@@ -69,7 +69,7 @@ export default {
       reactCompiler: true,
     },
     extra: {
-      API_BASE: process.env.API_BASE,
+      API_BASE: process.env.API_BASE || 'http://172.30.1.60:4000',
       GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
       GOOGLE_WEB_CLIENT_ID: process.env.GOOGLE_WEB_CLIENT_ID,
       GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,

@@ -76,60 +76,62 @@ export const AddSemesterModal: React.FC<AddSemesterModalProps> = ({
             onPress={(e) => e.stopPropagation()}
           >
             <View style={styles.modalContent}>
+              {/* Header */}
               <View style={styles.header}>
                 <Text style={styles.title}>Add New Semester</Text>
                 <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-                  <Ionicons name="close" size={24} color="#6B7280" />
+                  <Ionicons name="close" size={20} color="#9CA3AF" />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.content}>
+                {/* Year Select */}
                 <View style={styles.section}>
                   <Text style={styles.label}>Year</Text>
-                  <ScrollView
-                    style={styles.pickerContainer}
-                    nestedScrollEnabled
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {years.map((year) => (
-                      <TouchableOpacity
-                        key={year}
-                        style={[
-                          styles.pickerItem,
-                          selectedYear === year && styles.pickerItemActive,
-                        ]}
-                        onPress={() => setSelectedYear(year)}
-                      >
-                        <Text
+                  <View style={styles.pickerContainer}>
+                    <ScrollView
+                      style={styles.pickerScroll}
+                      nestedScrollEnabled
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {years.map((year) => (
+                        <TouchableOpacity
+                          key={year}
                           style={[
-                            styles.pickerItemText,
-                            selectedYear === year && styles.pickerItemTextActive,
+                            styles.pickerItem,
+                            selectedYear === year && styles.pickerItemActive,
                           ]}
+                          onPress={() => setSelectedYear(year)}
+                          activeOpacity={0.7}
                         >
-                          {year}
-                        </Text>
-                        {selectedYear === year && (
-                          <Ionicons name="checkmark" size={18} color="#426b1f" />
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
+                          <Text style={styles.pickerItemText}>
+                            {year}
+                          </Text>
+                          {selectedYear === year && (
+                            <Ionicons name="checkmark" size={18} color="#0F3F2E" />
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
                 </View>
 
+                {/* Semester Select */}
                 <View style={styles.section}>
                   <Text style={styles.label}>Semester</Text>
                   <View style={styles.semesterButtons}>
                     <TouchableOpacity
                       style={[
-                        styles.semesterButton,
-                        selectedSemester === 1 && styles.semesterButtonActive,
+                        styles.semesterCapsule,
+                        selectedSemester === 1 && styles.semesterCapsuleActive,
                       ]}
                       onPress={() => setSelectedSemester(1)}
+                      activeOpacity={0.7}
                     >
                       <Text
                         style={[
-                          styles.semesterButtonText,
-                          selectedSemester === 1 && styles.semesterButtonTextActive,
+                          styles.semesterCapsuleText,
+                          selectedSemester === 1 && styles.semesterCapsuleTextActive,
                         ]}
                       >
                         Fall
@@ -137,15 +139,16 @@ export const AddSemesterModal: React.FC<AddSemesterModalProps> = ({
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[
-                        styles.semesterButton,
-                        selectedSemester === 2 && styles.semesterButtonActive,
+                        styles.semesterCapsule,
+                        selectedSemester === 2 && styles.semesterCapsuleActive,
                       ]}
                       onPress={() => setSelectedSemester(2)}
+                      activeOpacity={0.7}
                     >
                       <Text
                         style={[
-                          styles.semesterButtonText,
-                          selectedSemester === 2 && styles.semesterButtonTextActive,
+                          styles.semesterCapsuleText,
+                          selectedSemester === 2 && styles.semesterCapsuleTextActive,
                         ]}
                       >
                         Spring
@@ -154,24 +157,28 @@ export const AddSemesterModal: React.FC<AddSemesterModalProps> = ({
                   </View>
                 </View>
 
+                {/* Preview Box */}
                 <View style={styles.preview}>
-                  <Text style={styles.previewLabel}>New Semester:</Text>
-                  <Text style={styles.previewValue}>
-                    {formatSemester(selectedYear, selectedSemester)}
+                  <Ionicons name="calendar-outline" size={16} color="#444444" />
+                  <Text style={styles.previewText}>
+                    New Semester: {formatSemester(selectedYear, selectedSemester)}
                   </Text>
                 </View>
               </View>
 
+              {/* Footer Buttons */}
               <View style={styles.footer}>
                 <TouchableOpacity
                   style={styles.cancelButton}
                   onPress={handleClose}
+                  activeOpacity={0.7}
                 >
                   <Text style={styles.cancelButtonText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.saveButton}
                   onPress={handleSave}
+                  activeOpacity={0.9}
                 >
                   <Text style={styles.saveButtonText}>Add Semester</Text>
                 </TouchableOpacity>
@@ -187,7 +194,7 @@ export const AddSemesterModal: React.FC<AddSemesterModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -197,137 +204,160 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 32,
+    padding: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 50,
+    elevation: 10,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#111111',
+    letterSpacing: -0.3,
+    flex: 1,
   },
   closeButton: {
-    padding: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8F8F8',
   },
   content: {
-    marginBottom: 20,
+    marginBottom: 24,
   },
   section: {
     marginBottom: 24,
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: '500',
+    color: '#111111',
     marginBottom: 12,
+    letterSpacing: -0.2,
   },
   pickerContainer: {
-    maxHeight: 200,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 10,
+    maxHeight: 240,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E8E8E8',
+    overflow: 'hidden',
+  },
+  pickerScroll: {
+    maxHeight: 240,
   },
   pickerItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    height: 50,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    marginHorizontal: 4,
+    marginVertical: 2,
   },
   pickerItemActive: {
-    backgroundColor: '#F0F4ED',
+    backgroundColor: 'rgba(15, 63, 46, 0.07)',
   },
   pickerItemText: {
-    fontSize: 16,
-    color: '#111827',
-  },
-  pickerItemTextActive: {
-    color: '#426b1f',
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '400',
+    color: '#131313',
+    letterSpacing: -0.2,
   },
   semesterButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 14,
   },
-  semesterButton: {
+  semesterCapsule: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    height: 44,
+    backgroundColor: '#F8F8F8',
+    borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  semesterButtonActive: {
-    backgroundColor: '#F0F4ED',
-    borderColor: '#426b1f',
+  semesterCapsuleActive: {
+    backgroundColor: 'rgba(15, 63, 46, 0.09)',
+    borderWidth: 1.5,
+    borderColor: '#0F3F2E',
   },
-  semesterButtonText: {
-    fontSize: 14,
+  semesterCapsuleText: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: '#555555',
+    letterSpacing: -0.2,
+  },
+  semesterCapsuleTextActive: {
+    color: '#0F3F2E',
     fontWeight: '500',
-    color: '#6B7280',
-  },
-  semesterButtonTextActive: {
-    color: '#426b1f',
-    fontWeight: '600',
   },
   preview: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#F0F4ED',
-    borderRadius: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#F9F9F9',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#EDEDED',
   },
-  previewLabel: {
+  previewText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  previewValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#426b1f',
+    fontWeight: '400',
+    color: '#444444',
+    letterSpacing: -0.2,
   },
   footer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 14,
   },
   cancelButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
+    height: 50,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E9E9E9',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   cancelButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#444444',
+    letterSpacing: -0.2,
   },
   saveButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#426b1f',
-    borderRadius: 10,
+    height: 50,
+    backgroundColor: '#0F3F2E',
+    borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0F3F2E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   saveButtonText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
 });
 

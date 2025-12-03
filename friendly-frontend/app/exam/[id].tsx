@@ -1,23 +1,23 @@
-import AssignmentDetailScreen from '@/src/screens/assignments/AssignmentDetailScreen';
+import ExamDetailScreen from '@/src/screens/exams/ExamDetailScreen';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { useApp } from '@/src/context/AppContext';
-import { getAssignmentById } from '@/src/services/classes/classResourcesService';
-import { ClassAssignment } from '@/src/types';
+import { getExamById } from '@/src/services/classes/classResourcesService';
+import { ClassExam } from '@/src/types';
 
-export default function AssignmentDetailRoute() {
+export default function ExamDetailRoute() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user } = useApp();
-  const [assignment, setAssignment] = useState<ClassAssignment | null>(null);
+  const [exam, setExam] = useState<ClassExam | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   const { id, classId } = params;
 
   useEffect(() => {
-    const loadAssignment = async () => {
+    const loadExam = async () => {
       if (!id || !classId || !user?.uid) {
         setError('Missing required parameters');
         setIsLoading(false);
@@ -26,17 +26,17 @@ export default function AssignmentDetailRoute() {
 
       try {
         setIsLoading(true);
-        const data = await getAssignmentById(id as string, classId as string, user.uid);
-        setAssignment(data);
+        const data = await getExamById(id as string, classId as string, user.uid);
+        setExam(data);
       } catch (err: any) {
-        console.error('Error loading assignment:', err);
-        setError(err.message || 'Failed to load assignment');
+        console.error('Error loading exam:', err);
+        setError(err.message || 'Failed to load exam');
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadAssignment();
+    loadExam();
   }, [id, classId, user?.uid]);
 
   const handleBack = () => {
@@ -54,22 +54,21 @@ export default function AssignmentDetailRoute() {
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
-        <ActivityIndicator size="large" color="#3E6A35" />
+        <ActivityIndicator size="large" color="#0F3F2E" />
       </View>
     );
   }
 
-  if (error || !assignment) {
+  if (error || !exam) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 20 }}>
-        <AssignmentDetailScreen
+        <ExamDetailScreen
           id={id as string}
           title=""
           date=""
-          time=""
-          type="other"
+          description=""
           onBack={handleBack}
-          error={error || 'Assignment not found'}
+          error={error || 'Exam not found'}
         />
       </View>
     );
@@ -77,17 +76,19 @@ export default function AssignmentDetailRoute() {
 
   return (
     <View style={{ flex: 1 }}>
-      <AssignmentDetailScreen
-        id={assignment.id}
-        title={assignment.title}
-        date={assignment.dueDate || ''}
-        time=""
-        type={assignment.type || 'other'}
-        description={assignment.description}
-        status={assignment.status}
-        classId={assignment.classId || (classId as string)}
+      <ExamDetailScreen
+        id={exam.id}
+        title={exam.title}
+        date={exam.date || ''}
+        description={exam.description || ''}
+        durationMinutes={exam.durationMinutes}
+        location={exam.location}
+        instructions={exam.instructions}
+        status={exam.status}
+        classId={exam.classId || (classId as string)}
         onBack={handleBack}
       />
     </View>
   );
 }
+

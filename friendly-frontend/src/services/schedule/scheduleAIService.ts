@@ -1,4 +1,5 @@
 import { ENV } from '../../config/env';
+import { Platform } from 'react-native';
 
 export interface ScheduleItem {
   id: string;
@@ -61,19 +62,25 @@ export class ScheduleAIService {
       }
 
       // Handle web vs native platforms differently
-      if (typeof window !== 'undefined' && window.File) {
-        // Web platform
+      if (Platform.OS === 'web') {
+        // Web platform - use File API
         try {
           const response = await fetch(imageUri);
-          const blob = await response.blob();
-          const file = new File([blob], filename, { type });
-          formData.append('image', file);
+          if (response.ok && typeof response.blob === 'function') {
+            const blob = await response.blob();
+            const file = new File([blob], filename, { type });
+            formData.append('image', file);
+          } else {
+            // Fallback: use URI directly if blob() is not available
+            formData.append('image', imageUri as any);
+          }
         } catch (error) {
           console.error('Error converting image to blob:', error);
+          // Fallback: use URI directly
           formData.append('image', imageUri as any);
         }
       } else {
-        // React Native platform
+        // React Native platform - use FormData with uri, type, name
         const fileData: any = {
           uri: imageUri,
           type: type,

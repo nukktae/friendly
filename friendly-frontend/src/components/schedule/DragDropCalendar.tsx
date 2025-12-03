@@ -36,7 +36,7 @@ const DragDropCalendar: React.FC<DragDropCalendarProps> = ({
   const [dragOverSlot, setDragOverSlot] = useState<{ day: string; time: string } | null>(null);
 
   // Generate time slots (7 AM to 10 PM, 30-minute intervals)
-  const timeSlots = [];
+  const timeSlots: string[] = [];
   for (let hour = 7; hour <= 22; hour++) {
     for (let minute = 0; minute < 60; minute += 30) {
       const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
@@ -60,7 +60,12 @@ const DragDropCalendar: React.FC<DragDropCalendarProps> = ({
     });
   };
 
-  const startDrag = (item: ScheduleItem) => {
+  const startDrag = (item: ScheduleItem, event?: any) => {
+    // Prevent default behavior
+    if (event) {
+      event.preventDefault?.();
+    }
+
     const pan = new Animated.ValueXY();
     const scale = new Animated.Value(1);
 
@@ -78,25 +83,27 @@ const DragDropCalendar: React.FC<DragDropCalendarProps> = ({
   };
 
   const onDragMove = (event: any) => {
-    if (!draggedItem) return;
+    if (!draggedItem || !event?.nativeEvent) return;
 
     const { translationX, translationY } = event.nativeEvent;
-    draggedItem.pan.setValue({ x: translationX, y: translationY });
+    if (translationX !== undefined && translationY !== undefined) {
+      draggedItem.pan.setValue({ x: translationX, y: translationY });
 
-    // Calculate which slot we're hovering over
-    const slotWidth = 80; // Approximate slot width
-    const slotHeight = 40; // Approximate slot height
-    
-    const dayIndex = Math.floor(translationX / slotWidth);
-    const timeIndex = Math.floor(translationY / slotHeight);
+      // Calculate which slot we're hovering over
+      const slotWidth = 80; // Approximate slot width
+      const slotHeight = 40; // Approximate slot height
+      
+      const dayIndex = Math.floor(translationX / slotWidth);
+      const timeIndex = Math.floor(translationY / slotHeight);
 
-    if (dayIndex >= 0 && dayIndex < days.length && timeIndex >= 0 && timeIndex < timeSlots.length) {
-      setDragOverSlot({
-        day: days[dayIndex],
-        time: timeSlots[timeIndex],
-      });
-    } else {
-      setDragOverSlot(null);
+      if (dayIndex >= 0 && dayIndex < days.length && timeIndex >= 0 && timeIndex < timeSlots.length) {
+        setDragOverSlot({
+          day: days[dayIndex],
+          time: timeSlots[timeIndex],
+        });
+      } else {
+        setDragOverSlot(null);
+      }
     }
   };
 
@@ -228,7 +235,10 @@ const DragDropCalendar: React.FC<DragDropCalendarProps> = ({
                       key={item.id}
                       style={[styles.scheduleItem, getItemStyle(item)]}
                       onPress={() => onItemPress(item)}
-                      onLongPress={() => startDrag(item)}
+                      onLongPress={(e) => {
+                        e?.preventDefault?.();
+                        startDrag(item, e);
+                      }}
                       activeOpacity={0.7}
                     >
                       <Text style={styles.itemTitle} numberOfLines={2}>

@@ -37,6 +37,7 @@ export interface SuggestedClass {
   reason: string; // Why this class is suggested
   isAI: boolean; // Whether this is an AI suggestion or manually added
   status?: 'planned' | 'taken'; // For manual suggestions
+  semester?: string; // Optional: target semester (e.g., "2026 Spring")
   createdAt: Date;
 }
 

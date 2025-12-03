@@ -380,8 +380,9 @@ const CommunityPage: React.FC<CommunityPageProps> = ({
         <TouchableOpacity 
           onPress={() => setShowNewPost(!showNewPost)}
           style={styles.newPostButton}
+          activeOpacity={0.7}
         >
-          <Ionicons name="add" size={20} color="#000" />
+          <Ionicons name="add-outline" size={18} color="#0F3F2E" />
         </TouchableOpacity>
         )}
       </View>
@@ -476,14 +477,12 @@ const CommunityPage: React.FC<CommunityPageProps> = ({
         {filteredPosts.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
-              <Ionicons name="chatbubbles-outline" size={48} color="#d1d5db" />
+              <Ionicons name="chatbubbles-outline" size={48} color="#9CA3AF" />
             </View>
-            <Text style={styles.emptyTitle}>No posts found</Text>
-              <Text style={styles.emptyText}>
-                {selectedCategory !== 'All' 
-                  ? 'Try changing your filters or be the first to post!'
-                  : 'Be the first to share something with the community!'}
-              </Text>
+            <Text style={styles.emptyTitle}>No posts yet</Text>
+            <Text style={styles.emptyText}>
+              Share something with your community!
+            </Text>
           </View>
         ) : (
             filteredPosts.map((post) => {
@@ -541,14 +540,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 48,
+    paddingTop: 56,
     paddingBottom: 20,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 0.5,
     borderBottomColor: '#E5E7EB',
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '600',
     color: '#111827',
     letterSpacing: -0.5,
@@ -557,11 +556,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F7F7F7',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E5E5E5',
   },
   loadingContainer: {
     flex: 1,
@@ -599,8 +598,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   feedContent: {
-    paddingHorizontal: 0,
-    paddingTop: 0,
+    paddingHorizontal: 20,
+    paddingTop: 20,
     paddingBottom: 100,
     backgroundColor: '#FFFFFF',
   },
@@ -610,27 +609,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#F3F4F6',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F7F7F7',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 16,
   },
   emptyTitle: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '500',
     color: '#111827',
-    marginBottom: 6,
+    marginBottom: 8,
     letterSpacing: -0.3,
   },
   emptyText: {
     fontSize: 14,
-    color: '#6B7280',
+    color: '#8A8A8A',
     textAlign: 'center',
-    marginBottom: 20,
     fontWeight: '400',
+    letterSpacing: -0.2,
   },
   verifyButton: {
     marginTop: 12,

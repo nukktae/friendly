@@ -25,23 +25,25 @@ const formatDueDate = (value?: string) => {
   if (!value) {
     return 'No due date';
   }
-  return new Date(value).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
+  const date = new Date(value);
+  const month = date.toLocaleString(undefined, { month: 'short' });
+  const day = date.getDate();
+  const time = date.toLocaleString(undefined, {
     hour: 'numeric',
     minute: 'numeric',
   });
+  return `${month} ${day} at ${time}`;
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  not_started: '#6b7280',
-  in_progress: '#f59e0b',
-  completed: '#10b981',
+const STATUS_BADGE_STYLES: Record<string, { bg: string; text: string }> = {
+  not_started: { bg: '#F5F5F5', text: '#4A4A4A' },
+  in_progress: { bg: 'rgba(15,63,46,0.08)', text: '#0F3F2E' },
+  completed: { bg: 'rgba(15,63,46,0.10)', text: '#0F3F2E' },
   // Old status values (for migration support)
-  pending: '#6b7280',
-  submitted: '#f59e0b',
-  graded: '#10b981',
-  past_due: '#ef4444',
+  pending: { bg: '#F5F5F5', text: '#4A4A4A' },
+  submitted: { bg: 'rgba(15,63,46,0.08)', text: '#0F3F2E' },
+  graded: { bg: 'rgba(15,63,46,0.10)', text: '#0F3F2E' },
+  past_due: { bg: 'rgba(15,63,46,0.08)', text: '#0F3F2E' },
 };
 
 // Migration map for old status values
@@ -52,11 +54,11 @@ const STATUS_MIGRATION: Record<string, ClassAssignment['status']> = {
   past_due: 'in_progress',
 };
 
-// Get status color with fallback for old status values
-const getStatusColor = (status: string): string => {
+// Get status badge style with fallback for old status values
+const getStatusBadgeStyle = (status: string): { bg: string; text: string } => {
   // Normalize old status values
   const normalizedStatus = STATUS_MIGRATION[status] || status as ClassAssignment['status'];
-  return STATUS_COLORS[normalizedStatus] || STATUS_COLORS.not_started;
+  return STATUS_BADGE_STYLES[normalizedStatus] || STATUS_BADGE_STYLES.not_started;
 };
 
 // Normalize status value (convert old to new)
@@ -175,14 +177,19 @@ export function ClassAssignmentsSection({
   if (!isLoading && !assignments.length) {
     return (
       <View style={styles.emptyState}>
-        <Text style={styles.emptyTitle}>No assignments available</Text>
+        <View style={styles.emptyIcon}>
+          <Ionicons name="folder-outline" size={40} color="#F4C979" />
+        </View>
+        <Text style={styles.emptyTitle}>No assignments yet</Text>
         <Text style={styles.emptyText}>
-          Assignments you add or receive will appear here.
+          When your professor adds an assignment, it will appear here.
         </Text>
-        <TouchableOpacity style={styles.createButton} onPress={onCreateAssignment}>
-          <Ionicons name="create" size={18} color="#fff" />
-          <Text style={styles.createButtonText}>Create Assignment</Text>
+        {onCreateAssignment && (
+        <TouchableOpacity style={styles.createButton} onPress={onCreateAssignment} activeOpacity={0.8}>
+            <Ionicons name="add" size={18} color="#fff" />
+            <Text style={styles.createButtonText}>Add Assignment</Text>
         </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -207,15 +214,15 @@ export function ClassAssignmentsSection({
                   onAssignmentPress?.(assignment);
                 }
               }}
-              activeOpacity={0.8}
+              activeOpacity={0.98}
             >
-              <View style={styles.icon}>
-                <Ionicons name="create" size={20} color="#f59e0b" />
+              <View style={styles.iconContainer}>
+                <Ionicons name="document-text-outline" size={22} color="#F4C979" />
               </View>
 
               <View style={styles.info}>
                 <View style={styles.headerRow}>
-                  <Text style={styles.title}>{assignment.title}</Text>
+                  <Text style={styles.name} numberOfLines={1}>{assignment.title}</Text>
                   {onStatusUpdate ? (
                     <TouchableOpacity
                       ref={(ref) => {
@@ -225,34 +232,39 @@ export function ClassAssignmentsSection({
                       }}
                       style={[
                         styles.statusChip,
-                        { backgroundColor: getStatusColor(assignment.status) },
+                        { backgroundColor: getStatusBadgeStyle(assignment.status).bg },
                       ]}
                       onPress={(e) => handleStatusPress(assignment, e)}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.statusText}>{formatStatusText(assignment.status)}</Text>
-                      <Ionicons name={showDropdown ? "chevron-up" : "chevron-down"} size={12} color="#fff" style={{ marginLeft: 4 }} />
+                      <Text style={[styles.statusText, { color: getStatusBadgeStyle(assignment.status).text }]}>
+                        {formatStatusText(assignment.status)}
+                      </Text>
+                      <Ionicons 
+                        name={showDropdown ? "chevron-up-outline" : "chevron-down-outline"} 
+                        size={14} 
+                        color={getStatusBadgeStyle(assignment.status).text} 
+                        style={{ marginLeft: 6 }} 
+                      />
                     </TouchableOpacity>
                   ) : (
                     <View
                       style={[
                         styles.statusChip,
-                        { backgroundColor: getStatusColor(assignment.status) },
+                        { backgroundColor: getStatusBadgeStyle(assignment.status).bg },
                       ]}
                     >
-                      <Text style={styles.statusText}>{formatStatusText(assignment.status)}</Text>
+                      <Text style={[styles.statusText, { color: getStatusBadgeStyle(assignment.status).text }]}>
+                        {formatStatusText(assignment.status)}
+                      </Text>
                     </View>
                   )}
                 </View>
-                {assignment.description ? (
-                  <Text style={styles.description} numberOfLines={2}>
-                    {assignment.description}
+                <Text style={styles.metaText} numberOfLines={1}>
+                  {assignment.description 
+                    ? `${assignment.description} · ${formatDueDate(assignment.dueDate)}`
+                    : formatDueDate(assignment.dueDate)}
                   </Text>
-                ) : null}
-                <View style={styles.metaRow}>
-                  <Ionicons name="calendar-outline" size={14} color="#6b7280" />
-                  <Text style={styles.metaText}>{formatDueDate(assignment.dueDate)}</Text>
-                </View>
               </View>
             </TouchableOpacity>
 
@@ -301,66 +313,68 @@ const styles = StyleSheet.create({
   },
   cardWrapper: {
     position: 'relative',
-    marginBottom: 12,
+    marginBottom: 14,
     zIndex: 1,
   },
   card: {
     flexDirection: 'row',
+    alignItems: 'center',
     padding: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#f3f4f6',
+    marginBottom: 12,
+    minHeight: 72,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  icon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#fef3c7',
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: 'rgba(244,201,121,0.15)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginEnd: 12,
+    marginRight: 12,
+    position: 'relative',
   },
   info: {
     flex: 1,
+    justifyContent: 'center',
+    minHeight: 48,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 4,
+    gap: 8,
   },
-  title: {
+  name: {
     flex: 1,
     fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
-  },
-  description: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginBottom: 4,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    color: '#1A1A1A',
   },
   metaText: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginStart: 6,
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '400',
   },
   statusChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    minHeight: 24,
+    justifyContent: 'center',
   },
   statusText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '500',
     textTransform: 'capitalize',
   },
   dropdownBackdrop: {
@@ -417,33 +431,52 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   emptyState: {
-    padding: 24,
+    paddingTop: 64,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
     alignItems: 'center',
   },
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(244,201,121,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 12,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#4A4A4A',
+    marginBottom: 8,
   },
   emptyText: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 13,
+    color: '#8A8A8A',
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 24,
+    paddingHorizontal: 40,
   },
   createButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#6B7C32',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    height: 44,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: '#0F3F2E',
     borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    gap: 8,
   },
   createButtonText: {
     color: '#fff',
+    fontSize: 15,
     fontWeight: '600',
-    marginStart: 8,
   },
   loadingContainer: {
     paddingVertical: 24,

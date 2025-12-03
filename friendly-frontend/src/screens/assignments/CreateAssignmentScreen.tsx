@@ -175,6 +175,7 @@ export default function CreateAssignmentScreen({
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isClosing, setIsClosing] = useState(false);
+  const [focusedInput, setFocusedInput] = useState<string | null>(null);
   const modalAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -534,14 +535,20 @@ export default function CreateAssignmentScreen({
           <View style={styles.section}>
             <Text style={styles.label}>Class</Text>
             <TouchableOpacity
-              style={styles.classSelector}
-              onPress={() => setShowClassPicker(true)}
-              activeOpacity={0.6}
+              style={[
+                styles.classSelector,
+                focusedInput === 'class' && styles.inputFocused,
+              ]}
+              onPress={() => {
+                setFocusedInput('class');
+                setShowClassPicker(true);
+              }}
+              activeOpacity={0.7}
             >
               <Text style={[styles.classSelectorText, !selectedClass && styles.placeholderText]}>
                 {selectedClass ? selectedClass.title : 'Select a class'}
               </Text>
-              <Ionicons name="chevron-down" size={18} color="#71717A" />
+              <Ionicons name="chevron-down" size={18} color="#6B7280" />
             </TouchableOpacity>
           </View>
 
@@ -549,11 +556,17 @@ export default function CreateAssignmentScreen({
           <View style={styles.section}>
             <Text style={styles.label}>Title</Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                styles.titleInput,
+                focusedInput === 'title' && styles.inputFocused,
+              ]}
               value={title}
               onChangeText={setTitle}
               placeholder="Enter assignment title"
-              placeholderTextColor="#A1A1AA"
+              placeholderTextColor="#9CA3AF"
+              onFocus={() => setFocusedInput('title')}
+              onBlur={() => setFocusedInput(null)}
             />
           </View>
 
@@ -569,12 +582,12 @@ export default function CreateAssignmentScreen({
                     type === item.value && styles.typeButtonActive,
                   ]}
                   onPress={() => setType(item.value as any)}
-                  activeOpacity={0.6}
+                  activeOpacity={0.96}
                 >
                   <Ionicons
                     name={item.icon as any}
                     size={18}
-                    color={type === item.value ? '#426b1f' : '#71717A'}
+                    color={type === item.value ? '#2F602E' : '#6B7280'}
                   />
                   <Text
                     style={[
@@ -616,24 +629,30 @@ export default function CreateAssignmentScreen({
             ) : (
               <View style={styles.descriptionInputContainer}>
                 <TextInput
-                  style={[styles.input, styles.textArea]}
+                  style={[
+                    styles.input,
+                    styles.textArea,
+                    focusedInput === 'description' && styles.inputFocused,
+                  ]}
                   value={description}
                   onChangeText={setDescription}
                   placeholder="Enter assignment description (optional)"
-                  placeholderTextColor="#A1A1AA"
+                  placeholderTextColor="#9CA3AF"
                   multiline
                   numberOfLines={4}
                   textAlignVertical="top"
+                  onFocus={() => setFocusedInput('description')}
+                  onBlur={() => setFocusedInput(null)}
                 />
                 <TouchableOpacity
                   onPress={isRecording ? handleStopRecording : handleStartRecording}
                   style={styles.micButton}
-                  activeOpacity={0.6}
+                  activeOpacity={0.7}
                 >
                   <Ionicons 
                     name={isRecording ? "stop" : "mic-outline"} 
                     size={18}
-                    color={isRecording ? "#EF4444" : "#426b1f"}
+                    color={isRecording ? "#EF4444" : "#2F602E"}
                   />
                 </TouchableOpacity>
               </View>
@@ -644,16 +663,20 @@ export default function CreateAssignmentScreen({
           <View style={styles.section}>
             <Text style={styles.label}>Deadline</Text>
             <TouchableOpacity
-              style={styles.dateSelector}
+              style={[
+                styles.dateSelector,
+                focusedInput === 'deadline' && styles.inputFocused,
+              ]}
               onPress={() => {
+                setFocusedInput('deadline');
                 setSelectedCalendarDate(dueDate || new Date());
                 setSelectedHour(dueDate ? dueDate.getHours() : 12);
                 setSelectedMinute(dueDate ? dueDate.getMinutes() : 0);
                 setShowCalendarModal(true);
               }}
-              activeOpacity={0.6}
+              activeOpacity={0.7}
             >
-              <Ionicons name="calendar-outline" size={18} color="#71717A" />
+              <Ionicons name="calendar-outline" size={18} color="#6B7280" />
               <Text style={[styles.dateSelectorText, !dueDate && styles.placeholderText]}>
                 {dueDate
                   ? `${dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${dueDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
@@ -675,7 +698,12 @@ export default function CreateAssignmentScreen({
             {isSubmitting ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.submitButtonText}>Create Assignment</Text>
+              <Text style={[
+                styles.submitButtonText,
+                isSubmitting && styles.submitButtonTextDisabled,
+              ]}>
+                Create Assignment
+              </Text>
             )}
           </TouchableOpacity>
         </ScrollView>
@@ -898,28 +926,31 @@ export default function CreateAssignmentScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#FFFFFF',
     paddingTop: Platform.OS === 'ios' ? 44 : 20,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingTop: 0,
     paddingBottom: 16,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 0.5,
-    borderBottomColor: '#E4E4E7',
+    borderBottomColor: '#E5E7EB',
   },
   backButton: {
     padding: 4,
   },
   headerTitle: {
     fontSize: 17,
-    fontWeight: '500',
-    color: '#18181B',
-    letterSpacing: -0.3,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  inputFocused: {
+    borderColor: '#3E6A35',
+    borderWidth: 1.5,
   },
   placeholder: {
     width: 28,
@@ -931,33 +962,39 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 40,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: 28,
   },
   label: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#18181B',
-    marginBottom: 8,
-    letterSpacing: -0.2,
+    color: '#374151',
+    marginBottom: 6,
   },
   input: {
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    borderRadius: 16,
-    borderWidth: 0.5,
-    borderColor: 'rgba(228, 228, 231, 0.4)',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: '#18181B',
-    letterSpacing: -0.2,
+    height: 48,
+    fontSize: 15,
+    color: '#1A1A1A',
+  },
+  titleInput: {
+    height: 50,
+    fontWeight: '600',
   },
   textArea: {
-    minHeight: 100,
+    minHeight: 120,
     paddingTop: 12,
-    paddingRight: 40,
+    paddingBottom: 12,
+    paddingRight: 50,
+    height: 'auto',
   },
   descriptionInputContainer: {
     position: 'relative',
@@ -966,31 +1003,26 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 12,
     right: 12,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 0.5,
-    borderColor: 'rgba(228, 228, 231, 0.4)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
   },
   transcribingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    borderRadius: 16,
-    borderWidth: 0.5,
-    borderColor: 'rgba(228, 228, 231, 0.4)',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
-    minHeight: 100,
+    minHeight: 120,
   },
   transcribingIcon: {
     width: 36,
@@ -1033,84 +1065,92 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    borderRadius: 16,
-    borderWidth: 0.5,
-    borderColor: 'rgba(228, 228, 231, 0.4)',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    height: 48,
   },
   classSelectorText: {
-    fontSize: 14,
-    color: '#18181B',
-    letterSpacing: -0.2,
+    fontSize: 15,
+    color: '#1A1A1A',
     flex: 1,
   },
   placeholderText: {
-    color: '#A1A1AA',
+    color: '#9CA3AF',
   },
   typeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 12,
+    rowGap: 10,
   },
   typeButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(228, 228, 231, 0.4)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#F5F5F7',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   typeButtonActive: {
-    backgroundColor: '#F0F4ED',
-    borderColor: '#426b1f',
+    backgroundColor: '#EDF4ED',
+    borderWidth: 1.5,
+    borderColor: '#2F602E',
   },
   typeButtonText: {
     fontSize: 13,
-    color: '#71717A',
-    fontWeight: '400',
+    color: '#6B7280',
+    fontWeight: '500',
   },
   typeButtonTextActive: {
-    color: '#426b1f',
-    fontWeight: '500',
+    color: '#2F602E',
+    fontWeight: '600',
   },
   dateSelector: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    borderRadius: 16,
-    borderWidth: 0.5,
-    borderColor: 'rgba(228, 228, 231, 0.4)',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    height: 48,
   },
   dateSelectorText: {
-    fontSize: 14,
-    color: '#18181B',
-    letterSpacing: -0.2,
+    fontSize: 15,
+    color: '#1A1A1A',
     flex: 1,
   },
   submitButton: {
-    backgroundColor: '#426b1f',
-    borderRadius: 16,
-    paddingVertical: 14,
+    backgroundColor: '#3E6A35',
+    borderRadius: 14,
+    height: 52,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 8,
     marginBottom: 40,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
   },
   submitButtonDisabled: {
-    opacity: 0.6,
+    backgroundColor: '#C7D3C6',
   },
   submitButtonText: {
     fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
-    letterSpacing: -0.2,
+  },
+  submitButtonTextDisabled: {
+    color: '#F0F5EF',
   },
   modalOverlay: {
     flex: 1,

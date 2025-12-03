@@ -110,3 +110,67 @@ export function getNextSemester(semester: string): string | null {
   }
 }
 
+/**
+ * Get the next future semester for planning (for AI suggestions)
+ * If we're in Nov-Dec, suggest next Spring
+ * If we're in Jan-Jul, suggest next Fall
+ * Otherwise suggest next semester
+ */
+export function getNextFutureSemester(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1; // 1-12
+  
+  // If it's November or December (11-12), suggest next year's Spring
+  if (month >= 11) {
+    return formatSemester(year + 1, 2); // Next year Spring
+  }
+  
+  // If it's January through July (1-7), we're in Spring, suggest next Fall
+  if (month <= 7) {
+    return formatSemester(year, 1); // Current year Fall
+  }
+  
+  // If it's August through October (8-10), we're in Fall, suggest next Spring
+  return formatSemester(year + 1, 2); // Next year Spring
+}
+
+/**
+ * Check if a semester is in the future (for filtering suggestions)
+ */
+export function isFutureSemester(semester: string): boolean {
+  const parsed = parseSemester(semester);
+  if (!parsed) return false;
+  
+  const current = getCurrentSemester();
+  const currentParsed = parseSemester(current);
+  if (!currentParsed) return false;
+  
+  // Compare years first
+  if (parsed.year > currentParsed.year) return true;
+  if (parsed.year < currentParsed.year) return false;
+  
+  // Same year, compare semesters
+  // Spring (2) > Fall (1) in the same year means it's future
+  return parsed.semester > currentParsed.semester;
+}
+
+/**
+ * Check if a semester is current or future (not past)
+ */
+export function isCurrentOrFutureSemester(semester: string): boolean {
+  const parsed = parseSemester(semester);
+  if (!parsed) return false;
+  
+  const current = getCurrentSemester();
+  const currentParsed = parseSemester(current);
+  if (!currentParsed) return false;
+  
+  // Compare years first
+  if (parsed.year > currentParsed.year) return true;
+  if (parsed.year < currentParsed.year) return false;
+  
+  // Same year, check if semester is >= current semester
+  return parsed.semester >= currentParsed.semester;
+}
+

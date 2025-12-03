@@ -6,16 +6,18 @@ import { ActivityIndicator, Alert, Animated, Platform, StyleSheet, Text, Touchab
 import { useApp } from '@/src/context/AppContext';
 import {
   ClassAssignmentsSection,
+  ClassExamsSection,
   ClassFilesSection,
   ClassRecordingsSection,
 } from '@/src/components/classes';
 import {
   fetchClassAssignments,
+  fetchClassExams,
   fetchClassFiles,
   fetchClassRecordings,
   updateAssignment,
 } from '@/src/services/classes/classResourcesService';
-import { ClassAssignment, ClassFile, ClassRecording } from '@/src/types';
+import { ClassAssignment, ClassExam, ClassFile, ClassRecording } from '@/src/types';
 import { PDFViewer } from '@/src/components/pdf/PDFViewer';
 import { getPDF, uploadPDF } from '@/src/services/pdf/pdfService';
 import { PDFFile } from '@/src/services/pdf/pdfService';
@@ -32,7 +34,7 @@ interface ClassDetailScreenProps {
   onRecordPress?: () => void;
 }
 
-type TabKey = 'files' | 'recordings' | 'assignments';
+type TabKey = 'files' | 'recordings' | 'assignments' | 'exams';
 
 export default function ClassDetailScreen({
   id,
@@ -53,6 +55,7 @@ export default function ClassDetailScreen({
   const [files, setFiles] = useState<ClassFile[]>([]);
   const [recordings, setRecordings] = useState<ClassRecording[]>([]);
   const [assignments, setAssignments] = useState<ClassAssignment[]>([]);
+  const [exams, setExams] = useState<ClassExam[]>([]);
   const [isLoadingResources, setIsLoadingResources] = useState(false);
   const [resourcesError, setResourcesError] = useState<string | null>(null);
   const [isUploadingPDF, setIsUploadingPDF] = useState(false);
@@ -80,14 +83,18 @@ export default function ClassDetailScreen({
         fetchClassAssignments(id, userId),
       ]);
 
-      // Only fetch recordings if userId is available (required for recordings endpoint)
+      // Only fetch recordings and exams if userId is available (required for these endpoints)
       let recordingsData: ClassRecording[] = [];
+      let examsData: ClassExam[] = [];
       if (userId) {
         try {
-          recordingsData = await fetchClassRecordings(id, userId);
+          [recordingsData, examsData] = await Promise.all([
+            fetchClassRecordings(id, userId),
+            fetchClassExams(id, userId),
+          ]);
         } catch (error) {
-          console.warn('Failed to fetch recordings:', error);
-          // Continue with empty recordings array
+          console.warn('Failed to fetch recordings/exams:', error);
+          // Continue with empty arrays
         }
       }
 
@@ -96,6 +103,7 @@ export default function ClassDetailScreen({
       setFiles(filesData);
       setRecordings(recordingsData);
       setAssignments(assignmentsData);
+      setExams(examsData);
       setResourcesError(null); // Clear any previous errors
     } catch (error) {
       if (!isMountedRef.current) return;
@@ -129,7 +137,9 @@ export default function ClassDetailScreen({
     }
 
     try {
-      await updateAssignment(assignmentId, classId, user.uid, { status });
+      await updateAssignment(assignmentId, classId, user.uid, { 
+        status: status as 'not_started' | 'in_progress' | 'completed' 
+      });
       // Refresh assignments after update
       await loadResources();
     } catch (error) {
@@ -199,19 +209,26 @@ export default function ClassDetailScreen({
     { key: 'files', label: `Files (${files.length})` },
     { key: 'recordings', label: `Recordings (${recordings.length})` },
     { key: 'assignments', label: `Assignments (${assignments.length})` },
+    { key: 'exams', label: `Exams (${exams.length})` },
   ];
 
-  // Calculate deadline
-  const getDeadline = () => {
-    if (type === 'exam') return 'Oct 15, 2025 - 2:00 PM';
-    if (type === 'assignment') return 'Oct 5, 2025 - 11:59 PM';
-    return 'No upcoming deadline';
-  };
 
-  const getDaysUntil = () => {
-    if (type === 'exam') return 13;
-    if (type === 'assignment') return 3;
-    return null;
+  // Get class color tint based on class type/color
+  const getClassColorTint = (classColor?: string): string => {
+    // Map class colors to tint backgrounds
+    const colorMap: Record<string, string> = {
+      '#2B59D1': '#E6EEF9', // Blue
+      '#9A3CA5': '#F4E9F8', // Purple
+      '#C33A3A': '#F9E6E6', // Red
+      '#CD6A28': '#FCEFE5', // Orange
+      '#D93A73': '#FCE7F0', // Pink
+      '#167A7A': '#E4F2F2', // Teal
+      '#2C6E42': '#E6F4EA', // Mint Green
+      '#5A3EC8': '#ECE9FA', // Indigo
+      '#D4A11F': '#FFF6D7', // Yellow
+      '#1F5D43': '#E7F2ED', // Emerald
+    };
+    return colorMap[classColor || ''] || '#E8F3EB'; // Default green tint
   };
 
   const headerOpacity = scrollY.interpolate({
@@ -240,41 +257,32 @@ export default function ClassDetailScreen({
         )}
         scrollEventThrottle={16}
       >
-        {/* Compact Header */}
-        <View style={styles.compactHeader}>
+        {/* Header */}
+        <View style={styles.header}>
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={20} color="#1f2937" />
+            <Ionicons name="arrow-back" size={24} color="#0D1A0D" />
           </TouchableOpacity>
           
           <View style={styles.headerContent}>
             <View style={styles.titleRow}>
-              <View style={[styles.typeChip, { backgroundColor: color || '#6B7C32' }]}>
-                <Text style={styles.typeChipText}>{(type || 'CLASS').toUpperCase()}</Text>
+              <View style={[styles.classBadge, { backgroundColor: color ? getClassColorTint(color) : '#E8F3EB' }]}>
+                <Text style={styles.classBadgeText}>CLASS</Text>
               </View>
-              <Text style={styles.compactTitle}>{title}</Text>
+              <Text style={styles.classTitle}>{title}</Text>
             </View>
             
-            {/* Compact Info Row */}
+            {/* Info Row */}
             <View style={styles.infoRow}>
               <View style={styles.infoItem}>
-                <Ionicons name="time-outline" size={14} color="#6b7280" />
+                <Ionicons name="time-outline" size={14} color="#6A6A6A" />
                 <Text style={styles.infoText}>{time}</Text>
               </View>
               {location && (
                 <>
                   <View style={styles.infoDivider} />
                   <View style={styles.infoItem}>
-                    <Ionicons name="location-outline" size={14} color="#6b7280" />
+                    <Ionicons name="location-outline" size={14} color="#6A6A6A" />
                     <Text style={styles.infoText}>{location}</Text>
-                  </View>
-                </>
-              )}
-              {instructor && (
-                <>
-                  <View style={styles.infoDivider} />
-                  <View style={styles.infoItem}>
-                    <Ionicons name="person-outline" size={14} color="#6b7280" />
-                    <Text style={styles.infoText}>{instructor}</Text>
                   </View>
                 </>
               )}
@@ -282,51 +290,27 @@ export default function ClassDetailScreen({
           </View>
         </View>
 
-        {/* Deadline Alert */}
-        {(type === 'exam' || type === 'assignment') && (
-          <View style={styles.deadlineCard}>
-            <View style={styles.deadlineHeader}>
-              <View style={[styles.deadlineIcon, { backgroundColor: getDaysUntil()! <= 5 ? '#fef3c7' : '#dbeafe' }]}>
-                <Ionicons 
-                  name={type === 'exam' ? 'alert-circle' : 'timer-outline'} 
-                  size={24} 
-                  color={getDaysUntil()! <= 5 ? '#f59e0b' : '#3b82f6'} 
-                />
-              </View>
-              <View style={styles.deadlineInfo}>
-                <Text style={styles.deadlineLabel}>
-                  {type === 'exam' ? 'Exam Date' : 'Due Date'}
-                </Text>
-                <Text style={styles.deadlineDate}>{getDeadline()}</Text>
-              </View>
-              <View style={styles.daysChip}>
-                <Text style={styles.daysText}>{getDaysUntil()} days</Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
+        {/* Action Buttons */}
+        <View style={styles.actionButtons}>
           <TouchableOpacity 
-            style={styles.actionButton}
+            style={styles.actionButtonRecord}
             onPress={onRecordPress}
             activeOpacity={0.7}
           >
-            <Ionicons name="mic" size={18} color="#ef4444" />
+            <Ionicons name="mic" size={18} color="#C33A3A" />
             <Text style={styles.actionButtonText}>Record</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={styles.actionButton}
+            style={styles.actionButtonPDF}
             onPress={handleAddPDF}
             activeOpacity={0.7}
             disabled={isUploadingPDF}
           >
             {isUploadingPDF ? (
-              <ActivityIndicator size="small" color="#3b82f6" />
+              <ActivityIndicator size="small" color="#2B59D1" />
             ) : (
-              <Ionicons name="document-attach" size={18} color="#3b82f6" />
+              <Ionicons name="document-attach" size={18} color="#2B59D1" />
             )}
             <Text style={styles.actionButtonText}>
               {isUploadingPDF ? 'Uploading...' : 'Add PDF'}
@@ -334,14 +318,13 @@ export default function ClassDetailScreen({
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={styles.actionButton}
+            style={styles.actionButtonAssignment}
             activeOpacity={0.7}
             onPress={() => {
               router.push({
                 pathname: '/assignment/create',
                 params: { 
                   classId: id,
-                  // Pass current screen params so we can navigate back properly
                   title,
                   time,
                   type,
@@ -351,9 +334,10 @@ export default function ClassDetailScreen({
               });
             }}
           >
-            <Ionicons name="create" size={18} color="#f59e0b" />
+            <Ionicons name="document-text" size={18} color="#FFAB3D" />
             <Text style={styles.actionButtonText}>Assignment</Text>
           </TouchableOpacity>
+
         </View>
 
         {/* Tabs */}
@@ -363,14 +347,20 @@ export default function ClassDetailScreen({
               key={tab.key}
               style={[styles.tab, activeTab === tab.key && styles.activeTab]}
               onPress={() => setActiveTab(tab.key)}
+              activeOpacity={0.7}
             >
               <Text style={[styles.tabText, activeTab === tab.key && styles.activeTabText]}>
                 {tab.label}
               </Text>
-              {activeTab === tab.key && <View style={styles.tabIndicator} />}
+              {activeTab === tab.key && (
+                <View style={[styles.tabIndicator, { backgroundColor: color || '#215732' }]} />
+              )}
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Divider */}
+        <View style={styles.divider} />
 
         {resourcesError && (
           <View style={styles.errorBanner}>
@@ -432,6 +422,32 @@ export default function ClassDetailScreen({
               isLoading={isLoadingResources}
               onStatusUpdate={handleStatusUpdate}
               classId={id}
+              onAssignmentPress={(assignment) => {
+                router.push({
+                  pathname: '/assignment/[id]',
+                  params: {
+                    id: assignment.id,
+                    classId: assignment.classId || id,
+                  },
+                });
+              }}
+            />
+          )}
+
+          {activeTab === 'exams' && (
+            <ClassExamsSection
+              exams={exams}
+              isLoading={isLoadingResources}
+              classId={id}
+              onExamPress={(exam) => {
+                router.push({
+                  pathname: '/exam/[id]',
+                  params: {
+                    id: exam.id,
+                    classId: exam.classId || id,
+                  },
+                });
+              }}
             />
           )}
         </View>
@@ -499,24 +515,17 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  compactHeader: {
+  header: {
     paddingTop: Platform.OS === 'ios' ? 44 : 20,
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 20,
     backgroundColor: '#ffffff',
   },
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#f9fafb',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-    alignSelf: 'flex-start',
+    marginBottom: 16,
   },
   headerContent: {
-    gap: 10,
+    gap: 12,
   },
   titleRow: {
     flexDirection: 'row',
@@ -524,21 +533,21 @@ const styles = StyleSheet.create({
     gap: 10,
     flexWrap: 'wrap',
   },
-  typeChip: {
+  classBadge: {
     paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  typeChipText: {
-    fontSize: 10,
+  classBadgeText: {
+    fontSize: 11,
     fontWeight: '700',
-    color: '#ffffff',
+    color: '#215732',
     letterSpacing: 0.5,
   },
-  compactTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
+  classTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#0D1A0D',
     letterSpacing: -0.3,
     flex: 1,
   },
@@ -546,7 +555,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   infoItem: {
     flexDirection: 'row',
@@ -554,119 +563,98 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   infoText: {
-    fontSize: 13,
-    color: '#6b7280',
+    fontSize: 14,
+    color: '#6A6A6A',
     fontWeight: '400',
   },
   infoDivider: {
-    width: 2,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: '#d1d5db',
+    width: 1,
+    height: 12,
+    backgroundColor: '#E5E7EB',
   },
-  deadlineCard: {
+  divider: {
+    height: 1,
+    backgroundColor: '#F2F2F2',
     marginHorizontal: 20,
-    marginBottom: 16,
-    padding: 14,
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#f3f4f6',
+    marginVertical: 0,
   },
-  deadlineHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  deadlineIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  deadlineInfo: {
-    flex: 1,
-  },
-  deadlineLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6b7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  deadlineDate: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  daysChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  daysText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6B7C32',
-  },
-  quickActions: {
+  actionButtons: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    marginBottom: 20,
+    paddingTop: 8,
+    paddingBottom: 8,
     gap: 8,
   },
-  actionButton: {
+  actionButtonRecord: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
+    gap: 8,
+    height: 44,
     paddingHorizontal: 12,
-    backgroundColor: '#f9fafb',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#f3f4f6',
+    backgroundColor: '#FCECEC',
+    borderRadius: 12,
+  },
+  actionButtonPDF: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 44,
+    paddingHorizontal: 12,
+    backgroundColor: '#E8F0FF',
+    borderRadius: 12,
+  },
+  actionButtonAssignment: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 44,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFF4E0',
+    borderRadius: 12,
   },
   actionButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#0D1A0D',
   },
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    marginBottom: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
     gap: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
   },
   tab: {
-    paddingBottom: 10,
+    paddingBottom: 12,
+    paddingTop: 12,
     position: 'relative',
+    minHeight: 44,
+    justifyContent: 'center',
   },
   activeTab: {},
   tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#9ca3af',
+    fontSize: 15,
+    fontWeight: '400',
+    color: '#8A8A8A',
   },
   activeTabText: {
-    color: '#111827',
+    color: '#0F3F2E',
+    fontWeight: '500',
   },
   tabIndicator: {
     position: 'absolute',
-    bottom: -1,
+    bottom: 0,
     left: 0,
     right: 0,
     height: 2,
-    backgroundColor: '#6B7C32',
     borderRadius: 1,
+    backgroundColor: '#0F3F2E',
   },
   errorBanner: {
     flexDirection: 'row',

@@ -1,127 +1,114 @@
-const OpenAI = require('openai');
+// OpenAI API temporarily disabled - using mock data instead
+// const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 const { saveSchedule } = require('./firestoreService');
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// const openai = new OpenAI({
+//   apiKey: process.env.OPENAI_API_KEY,
+// });
 
 /**
- * Analyze schedule image using OpenAI Vision API
+ * Analyze schedule image using mock data
  * Extracts schedule information: day, name, place (optional)
+ * TODO: Re-enable OpenAI Vision API when ready
  */
 async function analyzeScheduleImage(imagePath) {
   try {
-    console.log('Starting image analysis...');
+    console.log('Starting image analysis (using mock data)...');
     const startTime = Date.now();
     
-    // Read the image file
-    let imageBuffer = fs.readFileSync(imagePath);
-    const originalSize = imageBuffer.length;
+    // Simulate processing delay
+    await new Promise(resolve => setTimeout(resolve, 500));
     
-    // Compress image if it's too large (reduce size for faster API calls)
-    // OpenAI Vision API works well with smaller images, and it's faster
-    if (imageBuffer.length > 1024 * 1024) { // If larger than 1MB
-      console.log(`Image is ${(originalSize / 1024 / 1024).toFixed(2)}MB, optimizing...`);
-      // For now, we'll use the image as-is but note that compression would help
-      // In production, you could use sharp or jimp to resize/compress
-      // For schedule images, we don't need ultra-high resolution
-    }
-    
-    const base64Image = imageBuffer.toString('base64');
-    console.log(`Image encoded to base64 (${(base64Image.length / 1024).toFixed(2)}KB)`);
-
-    // Determine MIME type from file extension
-    const ext = path.extname(imagePath).toLowerCase();
-    let mimeType = 'image/jpeg';
-    if (ext === '.png') mimeType = 'image/png';
-    else if (ext === '.gif') mimeType = 'image/gif';
-    else if (ext === '.webp') mimeType = 'image/webp';
-
-    const prompt = `Analyze this schedule image and extract all schedule items. Return ONLY a JSON object with this exact structure:
-{
-  "items": [
-    {
-      "day": "Monday",
-      "name": "Math Class",
-      "place": "Room 101",
-      "time": "10:00 AM"
-    }
-  ]
-}
-
-For each item, extract:
-- day: Day of week (Monday-Sunday)
-- name: Class/event name
-- place: Location (null if not available)
-- time: Time (null if not available)
-
-Extract ALL schedule items. Return only valid JSON, no other text.`;
-
-    // Optimize: Use faster model and structured output
-    console.log('Sending request to OpenAI...');
-    const apiStartTime = Date.now();
-    
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini', // Faster and cheaper model (2-3x faster than gpt-4o)
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: prompt,
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:${mimeType};base64,${base64Image}`,
-                detail: 'low', // Use low detail for faster processing (high detail is slower)
-              },
-            },
-          ],
-        },
-      ],
-      max_tokens: 2000,
-      temperature: 0.1, // Lower temperature for more consistent, faster responses
-      response_format: { type: 'json_object' }, // Request JSON format for faster parsing
-    });
-    
-    const apiTime = Date.now() - apiStartTime;
-    console.log(`OpenAI API call completed in ${(apiTime / 1000).toFixed(2)}s`);
-
-    const content = response.choices[0].message.content;
-    
-    // Parse JSON response (now guaranteed to be JSON object)
-    let scheduleItems = [];
-    try {
-      const parsed = JSON.parse(content);
-      // Handle both { items: [...] } and direct array formats
-      scheduleItems = parsed.items || parsed;
-      
-      // Ensure it's an array
-      if (!Array.isArray(scheduleItems)) {
-        throw new Error('Response is not an array');
+    // Mock schedule data based on the provided schedule image
+    const mockScheduleItems = [
+      // Monday
+      {
+        day: 'Monday',
+        name: '소셜마케팅캠페인',
+        place: '북악관4층3호실',
+        time: '1:00 PM - 2:00 PM'
+      },
+      {
+        day: 'Monday',
+        name: '이산수학',
+        place: '미래관2층32호실',
+        time: '4:00 PM - 5:00 PM'
+      },
+      // Tuesday
+      {
+        day: 'Tuesday',
+        name: '알고리즘',
+        place: '미래관2층32호실',
+        time: '10:00 AM - 12:00 PM'
+      },
+      {
+        day: 'Tuesday',
+        name: '컴퓨터구조',
+        place: '미래관6층11호실',
+        time: '12:00 PM - 1:00 PM'
+      },
+      {
+        day: 'Tuesday',
+        name: 'Public Speaking: Science Communication',
+        place: null,
+        time: '2:00 PM - 4:00 PM'
+      },
+      {
+        day: 'Tuesday',
+        name: '모바일프로그래밍',
+        place: '미래관4층47호실',
+        time: '4:00 PM - 6:00 PM'
+      },
+      {
+        day: 'Tuesday',
+        name: '사제동행세미나',
+        place: null,
+        time: '6:00 PM - 7:00 PM'
+      },
+      // Wednesday
+      {
+        day: 'Wednesday',
+        name: '소통과토론',
+        place: '북악관4층4호실',
+        time: '1:00 PM - 3:00 PM'
+      },
+      {
+        day: 'Wednesday',
+        name: '이산수학',
+        place: '미래관2층32호실',
+        time: '4:00 PM - 5:00 PM'
+      },
+      // Thursday
+      {
+        day: 'Thursday',
+        name: '알고리즘',
+        place: '미래관2층32호실',
+        time: '10:00 AM - 12:00 PM'
+      },
+      {
+        day: 'Thursday',
+        name: '컴퓨터구조',
+        place: '미래관6층11호실',
+        time: '12:00 PM - 1:00 PM'
+      },
+      {
+        day: 'Thursday',
+        name: 'Public Speaking: Science Communication',
+        place: null,
+        time: '2:00 PM - 4:00 PM'
+      },
+      {
+        day: 'Thursday',
+        name: '모바일프로그래밍',
+        place: '미래관4층47호실',
+        time: '4:00 PM - 6:00 PM'
       }
-    } catch (parseError) {
-      console.error('Error parsing AI response:', parseError);
-      console.error('AI Response:', content);
-      // Fallback: try to extract array from response
-      try {
-        const jsonMatch = content.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          scheduleItems = JSON.parse(jsonMatch[0]);
-        } else {
-          throw parseError;
-        }
-      } catch (fallbackError) {
-        throw new Error('Failed to parse schedule data from AI response');
-      }
-    }
+    ];
 
     // Validate and clean the schedule items
-    const validatedItems = scheduleItems.map((item, index) => {
+    const validatedItems = mockScheduleItems.map((item, index) => {
       if (!item.day || !item.name) {
         throw new Error(`Schedule item ${index + 1} is missing required fields (day or name)`);
       }
@@ -135,7 +122,7 @@ Extract ALL schedule items. Return only valid JSON, no other text.`;
     });
 
     const totalTime = Date.now() - startTime;
-    console.log(`Image analysis completed in ${(totalTime / 1000).toFixed(2)}s, extracted ${validatedItems.length} items`);
+    console.log(`Image analysis completed in ${(totalTime / 1000).toFixed(2)}s, extracted ${validatedItems.length} items (mock data)`);
 
     return validatedItems;
   } catch (error) {

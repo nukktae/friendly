@@ -1,9 +1,11 @@
 import { useApp } from '@/src/context/AppContext';
 import ScheduleReviewScreen from '@/src/screens/schedule/ScheduleReviewScreen';
 import { ScheduleItem } from '@/src/services/schedule/scheduleAIService';
+import scheduleAIService from '@/src/services/schedule/scheduleAIService';
+import { ScheduleReviewSkeleton } from '@/src/components/schedule/ScheduleReviewSkeleton';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Alert, View } from 'react-native';
 
 export default function ScheduleReviewRoute() {
   const router = useRouter();
@@ -11,10 +13,49 @@ export default function ScheduleReviewRoute() {
   const { userProfile, user } = useApp();
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
   const [scheduleId, setScheduleId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const hasParsedRef = useRef(false);
   const hasNavigatedBackRef = useRef(false);
+  const hasAnalyzedRef = useRef(false);
 
   useEffect(() => {
+    // Check if we need to analyze an image
+    const isLoadingParam = params.isLoading;
+    const isLoadingString = Array.isArray(isLoadingParam) ? isLoadingParam[0] : isLoadingParam;
+    const imageUriParam = params.imageUri;
+    const imageUri = Array.isArray(imageUriParam) ? imageUriParam[0] : imageUriParam;
+    const userIdParam = params.userId;
+    const userIdString = Array.isArray(userIdParam) ? userIdParam[0] : userIdParam;
+
+    if (isLoadingString === 'true' && imageUri && userIdString && !hasAnalyzedRef.current) {
+      hasAnalyzedRef.current = true;
+      setIsLoading(true);
+      
+      // Start analysis
+      scheduleAIService.analyzeScheduleImage(imageUri, userIdString)
+        .then((result) => {
+          // Filter out "Room TBD" locations
+          const filteredItems = result.items.map(item => ({
+            ...item,
+            location: item.location && item.location.toLowerCase().includes('room tbd') 
+              ? undefined 
+              : item.location
+          }));
+          setScheduleItems(filteredItems);
+          setScheduleId(result.scheduleId);
+          setIsLoading(false);
+        })
+        .catch((error) => {
+          console.error('Failed to analyze image:', error);
+          setIsLoading(false);
+          Alert.alert('Error', 'Failed to analyze your schedule image. Please try again.', [
+            { text: 'OK', onPress: () => router.back() }
+          ]);
+        });
+      return;
+    }
+
+    // Handle existing items (from direct navigation with results)
     if (hasParsedRef.current) return;
 
     const itemsParam = params.items;
@@ -47,11 +88,11 @@ export default function ScheduleReviewRoute() {
           router.back();
         }
       }
-    } else if (!hasNavigatedBackRef.current) {
+    } else if (!hasNavigatedBackRef.current && !isLoadingString) {
       hasNavigatedBackRef.current = true;
       router.back();
     }
-  }, []);
+  }, [params]);
 
   const handleBack = () => {
     router.back();
@@ -93,8 +134,9 @@ export default function ScheduleReviewRoute() {
   // Use user.uid as fallback; allow guest saves when not signed in
   const userId = userProfile?.uid || user?.uid || 'guest';
 
-  if (scheduleItems.length === 0) {
-    return <View style={{ flex: 1 }} />;
+  // Show skeleton while loading
+  if (isLoading || scheduleItems.length === 0) {
+    return <ScheduleReviewSkeleton />;
   }
 
   return (

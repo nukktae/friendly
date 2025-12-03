@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +18,7 @@ interface PDFAnalysisPanelProps {
   selectedPage?: number | null;
   onPageSelect?: (page: number | null) => void;
   onAnalysisComplete?: () => void;
+  onRefreshRequest?: (handler: () => void) => void;
 }
 
 export function PDFAnalysisPanel({
@@ -26,6 +27,7 @@ export function PDFAnalysisPanel({
   selectedPage,
   onPageSelect,
   onAnalysisComplete,
+  onRefreshRequest,
 }: PDFAnalysisPanelProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isAnalyzingPage, setIsAnalyzingPage] = useState(false);
@@ -37,7 +39,7 @@ export function PDFAnalysisPanel({
     setPageAnalyses(pdf.pageAnalyses || {});
   }, [pdf.analysis, pdf.pageAnalyses]);
 
-  const handleAnalyzeFullPDF = async () => {
+  const handleAnalyzeFullPDF = useCallback(async () => {
     setIsAnalyzing(true);
     try {
       const result = await analyzePDF(pdf.id, userId);
@@ -55,7 +57,14 @@ export function PDFAnalysisPanel({
     } finally {
       setIsAnalyzing(false);
     }
-  };
+  }, [pdf.id, userId, onAnalysisComplete]);
+
+  // Expose refresh handler to parent
+  React.useEffect(() => {
+    if (onRefreshRequest && pdf.analysis) {
+      onRefreshRequest(handleAnalyzeFullPDF);
+    }
+  }, [pdf.analysis, onRefreshRequest, handleAnalyzeFullPDF]);
 
   const handleAnalyzePage = async (pageNumber: number) => {
     setIsAnalyzingPage(true);
@@ -124,16 +133,6 @@ export function PDFAnalysisPanel({
 
   return (
     <View style={styles.container}>
-      {/* Header - Minimal */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>AI Summary</Text>
-        {analysis && (
-          <View style={styles.badge}>
-            <Ionicons name="checkmark-circle" size={14} color="#6B7C32" />
-            <Text style={styles.badgeText}>Analyzed</Text>
-          </View>
-        )}
-      </View>
 
       {/* Loading State */}
       {(isAnalyzing || isAnalyzingPage) && (
@@ -143,101 +142,123 @@ export function PDFAnalysisPanel({
         </View>
       )}
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-        {/* Action Buttons Row */}
-        <View style={styles.actionsRow}>
-          {!analysis && (
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={handleAnalyzeFullPDF}
-              disabled={isAnalyzing}
-            >
-              {isAnalyzing ? (
-                <ActivityIndicator size="small" color="#6B7C32" />
-              ) : (
-                <Text style={styles.actionButtonText}>Analyze Document</Text>
-              )}
-            </TouchableOpacity>
-          )}
-          {selectedPage && !pageAnalyses[selectedPage] && (
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleAnalyzePage(selectedPage)}
-              disabled={isAnalyzingPage}
-            >
-              {isAnalyzingPage ? (
-                <ActivityIndicator size="small" color="#6B7C32" />
-              ) : (
-                <Text style={styles.actionButtonText}>Analyze Page {selectedPage}</Text>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.contentContainer} 
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Action Button - Full Width (only when not analyzed) */}
+        {!analysis && (
+          <TouchableOpacity
+            style={styles.fullWidthActionButton}
+            onPress={handleAnalyzeFullPDF}
+            disabled={isAnalyzing}
+            activeOpacity={0.8}
+          >
+            {isAnalyzing ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.fullWidthActionButtonText}>AI Analyze Document</Text>
+            )}
+          </TouchableOpacity>
+        )}
+        {selectedPage && !pageAnalyses[selectedPage] && !analysis && (
+          <TouchableOpacity
+            style={styles.fullWidthActionButton}
+            onPress={() => handleAnalyzePage(selectedPage)}
+            disabled={isAnalyzingPage}
+            activeOpacity={0.8}
+          >
+            {isAnalyzingPage ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.fullWidthActionButtonText}>Analyze Page {selectedPage}</Text>
+            )}
+          </TouchableOpacity>
+        )}
 
         {/* Document Analysis Results */}
         {analysis && (
-          <View style={styles.analysisCard}>
-            {/* Summary Section */}
-            <View style={styles.summarySection}>
-              <Text style={styles.sectionTitle}>Summary</Text>
+          <>
+            {/* Summary Card Block */}
+            <View style={styles.summaryCard}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardSectionLabel}>SUMMARY</Text>
+                {analysis && (
+                  <View style={styles.badge}>
+                    <Ionicons name="checkmark-circle" size={12} color="#6B7C32" />
+                    <Text style={styles.badgeText}>Analyzed</Text>
+                  </View>
+                )}
+              </View>
               <View style={styles.summaryContent}>
-                {formatSummaryParagraphs(analysis.summary).map((paragraph, index) => (
-                  <Text key={index} style={styles.summaryParagraph}>
+                {formatSummaryParagraphs(analysis.summary).map((paragraph, index, array) => (
+                  <Text 
+                    key={index} 
+                    style={[
+                      styles.summaryParagraph,
+                      index === array.length - 1 && styles.summaryParagraphLast
+                    ]}
+                  >
                     {paragraph}
                   </Text>
                 ))}
               </View>
             </View>
 
-            {/* Key Points Section */}
+            {/* Key Points Card Block */}
             {analysis.keyPoints && analysis.keyPoints.length > 0 && (
-              <View style={styles.keyPointsSection}>
-                <Text style={styles.sectionTitle}>Key Points</Text>
+              <View style={styles.keyPointsCard}>
+                <Text style={styles.cardSectionLabel}>KEY POINTS</Text>
                 <View style={styles.keyPointsList}>
                   {analysis.keyPoints.map((point, index) => (
                     <View key={index} style={styles.keyPointRow}>
-                      <Text style={styles.keyPointBullet}>•</Text>
+                      <View style={styles.keyPointBullet} />
                       <Text style={styles.keyPointText}>{sanitizeText(point)}</Text>
                     </View>
                   ))}
                 </View>
               </View>
             )}
-          </View>
+          </>
         )}
 
         {/* Selected Page Analysis */}
         {selectedPage && pageAnalyses[selectedPage] && (
-          <View style={styles.pageAnalysisCard}>
-            <View style={styles.pageAnalysisContent}>
-                {/* Summary Section */}
-                <View style={styles.summarySection}>
-                  <Text style={styles.sectionTitle}>Page {selectedPage}</Text>
-                  <View style={styles.summaryContent}>
-                    {formatSummaryParagraphs(pageAnalyses[selectedPage].summary).map((paragraph: string, index: number) => (
-                      <Text key={index} style={styles.summaryParagraph}>
-                        {paragraph}
-                      </Text>
-                    ))}
-                  </View>
-                </View>
-                
-                {/* Key Points Section */}
-                {pageAnalyses[selectedPage].keyPoints && pageAnalyses[selectedPage].keyPoints.length > 0 && (
-                  <View style={styles.keyPointsSection}>
-                    <Text style={styles.sectionTitle}>Key Points</Text>
-                    <View style={styles.keyPointsList}>
-                      {pageAnalyses[selectedPage].keyPoints.map((point: string, index: number) => (
-                        <View key={index} style={styles.keyPointRow}>
-                          <Text style={styles.keyPointBullet}>•</Text>
-                          <Text style={styles.keyPointText}>{sanitizeText(point)}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                )}
+          <>
+            {/* Page Summary Card */}
+            <View style={styles.summaryCard}>
+              <Text style={styles.cardSectionLabel}>PAGE {selectedPage}</Text>
+              <View style={styles.summaryContent}>
+                {formatSummaryParagraphs(pageAnalyses[selectedPage].summary).map((paragraph: string, index: number, array: string[]) => (
+                  <Text 
+                    key={index} 
+                    style={[
+                      styles.summaryParagraph,
+                      index === array.length - 1 && styles.summaryParagraphLast
+                    ]}
+                  >
+                    {paragraph}
+                  </Text>
+                ))}
+              </View>
             </View>
-          </View>
+            
+            {/* Page Key Points Card */}
+            {pageAnalyses[selectedPage].keyPoints && pageAnalyses[selectedPage].keyPoints.length > 0 && (
+              <View style={styles.keyPointsCard}>
+                <Text style={styles.cardSectionLabel}>KEY POINTS</Text>
+                <View style={styles.keyPointsList}>
+                  {pageAnalyses[selectedPage].keyPoints.map((point: string, index: number) => (
+                    <View key={index} style={styles.keyPointRow}>
+                      <View style={styles.keyPointBullet} />
+                      <Text style={styles.keyPointText}>{sanitizeText(point)}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </>
         )}
 
         {/* Page-by-Page Analysis List */}
@@ -284,113 +305,102 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ffffff',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#111827',
-    letterSpacing: -0.5,
-  },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#f0fdf4',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7C32',
-  },
   loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
+    paddingVertical: 20,
     paddingHorizontal: 20,
-    backgroundColor: '#f9fafb',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  loadingText: {
-    fontSize: 13,
-    color: '#6b7280',
-    fontWeight: '500',
   },
   content: {
     flex: 1,
   },
   contentContainer: {
-    padding: 20,
-    gap: 24,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 20,
+    gap: 16,
   },
-  // Actions Row - Compact Buttons
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
-    flex: 1,
-    alignItems: 'center',
+  // Full Width Action Button
+  fullWidthActionButton: {
+    width: '100%',
+    height: 48,
+    backgroundColor: '#6B7C32',
+    borderRadius: 12,
     justifyContent: 'center',
-    backgroundColor: '#ffffff',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    minHeight: 36,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    marginBottom: 8,
   },
-  actionButtonText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#6B7C32',
+  fullWidthActionButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
-  // Analysis Cards - Minimal Design
-  analysisCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    padding: 20,
+  // Card-based Design
+  summaryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingTop: 14,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  pageAnalysisCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    padding: 20,
+  keyPointsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingTop: 14,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  summarySection: {
-    marginBottom: 24,
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
   },
-  sectionTitle: {
+  cardSectionLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#6b7280',
+    color: '#6B7280',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 12,
+    letterSpacing: 1,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F0FDF4',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6B7C32',
   },
   summaryContent: {
-    marginTop: 4,
+    marginTop: 0,
   },
   summaryParagraph: {
-    fontSize: 14,
+    fontSize: 15,
     lineHeight: 22,
-    color: '#111827',
-    marginBottom: 16,
+    color: '#374151',
+    marginBottom: 10,
   },
-  keyPointsSection: {
-    marginTop: 24,
+  summaryParagraphLast: {
+    marginBottom: 0,
   },
   keyPointsList: {
     marginTop: 8,
@@ -399,57 +409,57 @@ const styles = StyleSheet.create({
   keyPointRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
+    gap: 12,
   },
   keyPointBullet: {
-    fontSize: 14,
-    color: '#6B7C32',
-    marginTop: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#6B7C32',
+    marginTop: 8,
+    flexShrink: 0,
   },
   keyPointText: {
     flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 22,
     color: '#374151',
   },
-  pageAnalysisContent: {
-    gap: 24,
-  },
-  // Pages List Section - Minimal
+  // Pages List Section
   pagesListSection: {
     marginTop: 8,
   },
   sectionHeaderTitle: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#6b7280',
+    color: '#6B7280',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
     marginBottom: 12,
   },
   pagesList: {
     gap: 8,
   },
   pageCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: '#E5E7EB',
   },
   pageCardActive: {
     borderColor: '#6B7C32',
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#F9FAFB',
   },
   pageCardTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: '#111827',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   pageCardSummary: {
-    fontSize: 12,
-    color: '#6b7280',
-    lineHeight: 18,
+    fontSize: 13,
+    color: '#6B7280',
+    lineHeight: 20,
   },
 });

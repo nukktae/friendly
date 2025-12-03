@@ -17,24 +17,71 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   showDropdown,
   onToggleDropdown,
 }) => {
+  // Visible categories shown as buttons
+  const visibleCategories = ['General', 'Study Groups'];
+  
+  // Categories that go in the "More" dropdown
+  const moreCategories = categories.filter(cat => !visibleCategories.includes(cat));
+  
+  // Check if selected category is from the "More" dropdown
+  const isMoreCategorySelected = moreCategories.includes(selectedCategory);
+
   return (
     <>
       <View style={styles.filterBar}>
-        <TouchableOpacity
-          style={styles.filterDropdown}
-          onPress={onToggleDropdown}
-          activeOpacity={0.7}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterButtonsContainer}
         >
-          <Ionicons name="filter-outline" size={15} color="#4B5563" />
-          <Text style={styles.filterText} numberOfLines={1}>{selectedCategory}</Text>
-          <Ionicons name="chevron-down" size={13} color="#9CA3AF" />
-        </TouchableOpacity>
+          {visibleCategories.map((category) => (
+            <TouchableOpacity
+              key={category}
+              style={[
+                styles.filterButton,
+                selectedCategory === category && styles.filterButtonActive
+              ]}
+              onPress={() => onCategorySelect(category)}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.filterButtonText,
+                selectedCategory === category && styles.filterButtonTextActive
+              ]}>
+                {category}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              styles.moreButton,
+              (showDropdown || isMoreCategorySelected) && styles.moreButtonActive
+            ]}
+            onPress={onToggleDropdown}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.filterButtonText,
+              (showDropdown || isMoreCategorySelected) && styles.filterButtonTextActive
+            ]}>
+              More
+            </Text>
+            <Ionicons 
+              name={showDropdown ? "chevron-up" : "chevron-down"} 
+              size={14} 
+              color={(showDropdown || isMoreCategorySelected) ? "#0F3F2E" : "#6B7280"} 
+              style={styles.moreIcon}
+            />
+          </TouchableOpacity>
+        </ScrollView>
       </View>
 
       {showDropdown && (
         <View style={styles.dropdownContainer}>
           <ScrollView style={styles.dropdown} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-            {categories.map((category) => (
+            {moreCategories.map((category) => (
               <TouchableOpacity
                 key={category}
                 style={[
@@ -54,7 +101,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                   {category}
                 </Text>
                 {selectedCategory === category && (
-                  <Ionicons name="checkmark" size={16} color="#111827" />
+                  <Ionicons name="checkmark" size={16} color="#0F3F2E" />
                 )}
               </TouchableOpacity>
             ))}
@@ -67,71 +114,86 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
 const styles = StyleSheet.create({
   filterBar: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#E5E7EB',
   },
-  filterDropdown: {
-    flex: 1,
+  filterButtonsContainer: {
     flexDirection: 'row',
+    gap: 10,
     alignItems: 'center',
-    paddingHorizontal: 14,
+  },
+  filterButton: {
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    gap: 8,
   },
-  filterText: {
-    flex: 1,
+  filterButtonActive: {
+    backgroundColor: '#0F3F2E',
+    borderColor: '#0F3F2E',
+  },
+  filterButtonText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#111827',
+    color: '#6B7280',
     letterSpacing: -0.2,
+  },
+  filterButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  moreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  moreButtonActive: {
+    backgroundColor: '#0F3F2E',
+    borderColor: '#0F3F2E',
+  },
+  moreIcon: {
+    marginLeft: 2,
   },
   dropdownContainer: {
     backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginTop: 6,
+    marginHorizontal: 20,
+    marginTop: 8,
     marginBottom: 8,
-    borderRadius: 10,
-    borderWidth: 0.5,
-    borderColor: '#E5E7EB',
-    maxHeight: 240,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#ECECEC',
+    maxHeight: 280,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 8,
+    overflow: 'hidden',
   },
   dropdown: {
-    borderRadius: 10,
+    borderRadius: 18,
   },
   dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#F3F4F6',
+    paddingVertical: 14,
   },
   dropdownItemActive: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: 'rgba(15, 63, 46, 0.05)',
   },
   dropdownItemText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#6B7280',
+    fontSize: 15,
+    fontWeight: '400',
+    color: '#111827',
     letterSpacing: -0.2,
   },
   dropdownItemTextActive: {
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: '500',
+    color: '#0F3F2E',
   },
 });
 

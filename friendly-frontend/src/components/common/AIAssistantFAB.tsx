@@ -24,6 +24,96 @@ import { ENV } from '../../config/env';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
+// Typing Indicator Component
+const TypingIndicator: React.FC = () => {
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animateDot = (dot: Animated.Value, delay: number) => {
+      return Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(dot, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(dot, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+    };
+
+    const anim1 = animateDot(dot1, 0);
+    const anim2 = animateDot(dot2, 200);
+    const anim3 = animateDot(dot3, 400);
+
+    anim1.start();
+    anim2.start();
+    anim3.start();
+
+    return () => {
+      anim1.stop();
+      anim2.stop();
+      anim3.stop();
+    };
+  }, []);
+
+  const opacity1 = dot1.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 1],
+  });
+
+  const opacity2 = dot2.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 1],
+  });
+
+  const opacity3 = dot3.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 1],
+  });
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 2 }}>
+      <Animated.View
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: '#71717A',
+          opacity: opacity1,
+          marginRight: 4,
+        }}
+      />
+      <Animated.View
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: '#71717A',
+          opacity: opacity2,
+          marginRight: 4,
+        }}
+      />
+      <Animated.View
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: '#71717A',
+          opacity: opacity3,
+        }}
+      />
+    </View>
+  );
+};
+
 interface ScheduleItem {
   id: string;
   title: string;
@@ -65,8 +155,9 @@ const AIAssistantFAB: React.FC<AIAssistantFABProps> = ({ scheduleData, userData,
   const webMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const webAudioChunksRef = useRef<Blob[]>([]);
   const webStreamRef = useRef<MediaStream | null>(null);
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (isOpen && messages.length === 0) {
@@ -496,8 +587,10 @@ const AIAssistantFAB: React.FC<AIAssistantFABProps> = ({ scheduleData, userData,
           webStreamRef.current = null;
         }
       } else {
-        const recording = await audioRecorder.stop();
-        audioUri = recording.uri;
+        await audioRecorder.stop();
+        // Wait a bit for the URI to be available
+        await new Promise(resolve => setTimeout(resolve, 300));
+        audioUri = audioRecorder.uri || null;
       }
 
       if (audioUri) {
@@ -542,9 +635,27 @@ const AIAssistantFAB: React.FC<AIAssistantFABProps> = ({ scheduleData, userData,
       <TouchableOpacity
         style={styles.fab}
         onPress={() => setIsOpen(true)}
-        activeOpacity={0.8}
+        onPressIn={() => {
+          Animated.spring(scaleAnim, {
+            toValue: 0.97,
+            useNativeDriver: true,
+            tension: 300,
+            friction: 10,
+          }).start();
+        }}
+        onPressOut={() => {
+          Animated.spring(scaleAnim, {
+            toValue: 1,
+            useNativeDriver: true,
+            tension: 300,
+            friction: 10,
+          }).start();
+        }}
+        activeOpacity={1}
       >
-        <Ionicons name="chatbubbles" size={22} color="#ffffff" />
+        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+          <Ionicons name="chatbubbles" size={20} color="#ffffff" />
+        </Animated.View>
       </TouchableOpacity>
 
       {/* Modal */}
@@ -655,8 +766,7 @@ const AIAssistantFAB: React.FC<AIAssistantFABProps> = ({ scheduleData, userData,
                               </Text>
                             </View>
                             <TouchableOpacity
-                              onPress={(e) => {
-                                e.stopPropagation();
+                              onPress={() => {
                                 Alert.alert(
                                   'Delete Chat',
                                   'Are you sure you want to delete this chat?',
@@ -795,7 +905,7 @@ const AIAssistantFAB: React.FC<AIAssistantFABProps> = ({ scheduleData, userData,
                 {isLoading && (
                   <View style={[styles.messageRow, styles.assistantRow]}>
                     <View style={[styles.messageBubble, styles.assistantBubble]}>
-                      <ActivityIndicator size="small" color="#71717A" />
+                      <TypingIndicator />
                   </View>
                 </View>
               )}
@@ -844,7 +954,7 @@ const AIAssistantFAB: React.FC<AIAssistantFABProps> = ({ scheduleData, userData,
                   multiline
                   maxLength={500}
                   editable={!isLoading}
-                  onSubmitEditing={handleSend}
+                  onSubmitEditing={() => handleSend()}
                 />
                   <TouchableOpacity
                     onPress={isRecording ? handleStopRecording : handleStartRecording}
@@ -858,7 +968,7 @@ const AIAssistantFAB: React.FC<AIAssistantFABProps> = ({ scheduleData, userData,
                     />
                   </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={handleSend}
+                  onPress={() => handleSend()}
                   style={[
                     styles.sendButton,
                     (!inputText.trim() || isLoading) && styles.sendButtonDisabled,
@@ -895,10 +1005,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 8,
     zIndex: 9999,
   },
   modalOverlay: {

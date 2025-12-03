@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
-import React, { useState, useEffect, useRef } from 'react';
+import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -38,6 +41,7 @@ export const GraduationRequirementsUpload: React.FC<GraduationRequirementsUpload
   analysis: analysisProp,
   onAnalysisComplete,
 }) => {
+  const router = useRouter();
   const [showModal, setShowModal] = useState(false);
   const [textInput, setTextInput] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
@@ -115,27 +119,117 @@ export const GraduationRequirementsUpload: React.FC<GraduationRequirementsUpload
   }, []);
 
   // Load checklist state from backend when analysis is available
-  useEffect(() => {
-    const loadChecklistState = async () => {
-      if (!analysis || !userId) return;
-      
-      try {
-        const gpaData = await getGPAData(userId);
-        if (gpaData) {
-          if (gpaData.completedRequiredCourses && gpaData.completedRequiredCourses.length > 0) {
-            setCompletedCourseNames(new Set(gpaData.completedRequiredCourses));
-          }
-          if (gpaData.completedCoreCategories && gpaData.completedCoreCategories.length > 0) {
-            setCompletedCoreCategories(new Set(gpaData.completedCoreCategories));
-          }
+  const loadChecklistState = useCallback(async () => {
+    if (!analysis || !userId) return;
+    
+    try {
+      const gpaData = await getGPAData(userId);
+      if (gpaData) {
+        if (gpaData.completedRequiredCourses && gpaData.completedRequiredCourses.length > 0) {
+          setCompletedCourseNames(new Set(gpaData.completedRequiredCourses));
+        } else {
+          setCompletedCourseNames(new Set());
         }
-      } catch (error) {
-        console.error('[loadChecklistState] Error loading checklist state:', error);
+        if (gpaData.completedCoreCategories && gpaData.completedCoreCategories.length > 0) {
+          setCompletedCoreCategories(new Set(gpaData.completedCoreCategories));
+        } else {
+          setCompletedCoreCategories(new Set());
+        }
       }
-    };
-
-    loadChecklistState();
+    } catch (error) {
+      console.error('[loadChecklistState] Error loading checklist state:', error);
+    }
   }, [analysis, userId]);
+
+  useEffect(() => {
+    loadChecklistState();
+  }, [loadChecklistState]);
+
+  // Reload checklist state when screen comes into focus (e.g., returning from detail screen)
+  useFocusEffect(
+    useCallback(() => {
+      if (analysis && userId) {
+        loadChecklistState();
+      }
+    }, [analysis, userId, loadChecklistState])
+  );
+
+  // Debug: Track when completedCourses prop changes
+  useEffect(() => {
+    console.log('[GraduationRequirementsUpload] completedCourses prop changed:', {
+      count: completedCourses.length,
+      courses: completedCourses.map(c => ({ id: c.id, name: c.name, credits: c.credits })),
+      totalCredits: completedCourses.reduce((sum, c) => sum + (c.credits || 0), 0)
+    });
+  }, [completedCourses]);
+
+  // Create a dependency string from course credits to detect changes
+  const coursesCreditsKey = useMemo(() => {
+    const key = completedCourses.map(c => `${c.id}:${c.credits}`).join(',');
+    console.log('[GraduationRequirementsUpload] coursesCreditsKey updated:', key);
+    console.log('[GraduationRequirementsUpload] completedCourses:', completedCourses.map(c => ({ id: c.id, name: c.name, credits: c.credits })));
+    return key;
+  }, [completedCourses]);
+
+  // Calculate completed and remaining credits helper function
+  // Use useMemo to recalculate when dependencies change
+  const completedCredits = useMemo(() => {
+    console.log('[GraduationRequirementsUpload] calculateCompletedCredits called');
+    console.log('[GraduationRequirementsUpload] analysis exists:', !!analysis);
+    console.log('[GraduationRequirementsUpload] completedCourses length:', completedCourses.length);
+    
+    if (!analysis) {
+      console.log('[GraduationRequirementsUpload] No analysis, returning 0');
+      return 0;
+    }
+    
+    // 1. Credits from manually checked required courses
+    let checkedCredits = 0;
+    if (completedCourseNames.size > 0) {
+      checkedCredits = analysis.requiredCourses
+        ?.filter((course: any) => {
+          const courseName = course.nameKorean || course.name || course;
+          return completedCourseNames.has(courseName);
+        })
+        .reduce((sum: number, course: any) => sum + (course.credits || 3), 0) || 0;
+    }
+    console.log('[GraduationRequirementsUpload] checkedCredits (required courses):', checkedCredits);
+    
+    // 2. Core category credits
+    const coreCredits = completedCoreCategories.size * 3;
+    console.log('[GraduationRequirementsUpload] coreCredits:', coreCredits);
+    
+    // 3. Credits from GPA calculator courses (completedCourses prop)
+    const gpaCalculatorCredits = completedCourses.reduce((sum, course) => {
+      const credits = course.credits || 0;
+      console.log(`[GraduationRequirementsUpload] Course: ${course.name}, Credits: ${credits}`);
+      return sum + credits;
+    }, 0);
+    console.log('[GraduationRequirementsUpload] gpaCalculatorCredits:', gpaCalculatorCredits);
+    
+    // 4. Credits from initial analysis (if any, but we'll use GPA calculator credits instead)
+    // Note: analysis.analysis?.completedCredits might be from initial analysis, 
+    // but we prefer using the actual completedCourses from GPA calculator
+    const initialAnalysisCredits = analysis.analysis?.completedCredits || 0;
+    console.log('[GraduationRequirementsUpload] initialAnalysisCredits:', initialAnalysisCredits);
+    
+    // Use GPA calculator credits if available, otherwise fall back to initial analysis credits
+    // This ensures we always use the most up-to-date course data
+    const courseCredits = gpaCalculatorCredits > 0 ? gpaCalculatorCredits : initialAnalysisCredits;
+    console.log('[GraduationRequirementsUpload] courseCredits (final):', courseCredits);
+    
+    const total = checkedCredits + coreCredits + courseCredits;
+    console.log('[GraduationRequirementsUpload] TOTAL completedCredits:', total, '(checked:', checkedCredits, '+ core:', coreCredits, '+ course:', courseCredits, ')');
+    
+    return Number(total) || 0;
+  }, [analysis, completedCourseNames, completedCoreCategories, coursesCreditsKey, completedCourses]);
+
+  const remainingCredits = useMemo(() => {
+    if (!analysis) return 0;
+    const total = analysis.totalCreditsRequired || 136;
+    const remaining = Math.max(0, total - completedCredits);
+    return Number(remaining) || 0;
+  }, [analysis, completedCredits]);
 
   // Save checklist state to backend
   const saveChecklistState = async (completedCourses: Set<string>, completedCategories: Set<string>) => {
@@ -156,21 +250,30 @@ export const GraduationRequirementsUpload: React.FC<GraduationRequirementsUpload
 
   const handlePickFile = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'image/*'],
-        copyToCacheDirectory: true,
-        multiple: true, // Enable multiple file selection
+      // Request permission for photo library
+      const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+      if (!mediaPermission.granted) {
+        const mediaResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!mediaResult.granted) {
+          Alert.alert('Permission Required', 'Photo library access is required to select images.');
+          return;
+        }
+      }
+
+      // Open photo album
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const newFiles: SelectedFile[] = result.assets.map(asset => {
-          const fileName = asset.name || '';
-          const mimeType = asset.mimeType || '';
-        const isPDF = fileName.toLowerCase().endsWith('.pdf') || mimeType === 'application/pdf';
+          const fileName = asset.fileName || asset.uri.split('/').pop() || `image_${Date.now()}.jpg`;
           return {
             uri: asset.uri,
             name: fileName,
-            type: isPDF ? 'pdf' : 'image',
+            type: 'image',
           };
         });
 
@@ -189,7 +292,7 @@ export const GraduationRequirementsUpload: React.FC<GraduationRequirementsUpload
         }
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to pick files');
+      Alert.alert('Error', error.message || 'Failed to pick images');
     }
   };
 
@@ -459,382 +562,78 @@ export const GraduationRequirementsUpload: React.FC<GraduationRequirementsUpload
   }
 
   if (analysis) {
-    console.log('[Render] ✅ Analysis exists, showing analysis card');
-    console.log('[Render] Analysis keys:', Object.keys(analysis));
-    console.log('[Render] Analysis preview:', {
-      totalCredits: analysis.totalCreditsRequired,
-      hasCreditBreakdown: !!analysis.creditBreakdown,
-      hasRequiredCourses: !!analysis.requiredCourses,
-    });
+    const completed = Number(completedCredits) || 0;
+    const remaining = Number(remainingCredits) || 0;
+    const total = analysis.totalCreditsRequired || 136;
+    const progressPercentage = total > 0 ? Math.min((completed / total) * 100, 100) : 0;
+    
+    console.log('[GraduationRequirementsUpload] RENDER - completed:', completed, 'remaining:', remaining, 'total:', total);
 
     return (
       <View style={styles.container}>
-        <View style={styles.analysisCard}>
-          <View style={styles.analysisHeader}>
-            <View style={styles.analysisHeaderLeft}>
-              <View style={styles.successIcon}>
-                <Ionicons name="checkmark" size={14} color="#10b981" />
-              </View>
-            <Text style={styles.analysisTitle}>Requirements Analyzed</Text>
+        <View style={styles.premiumCard}>
+          {/* Header */}
+          <View style={styles.premiumHeader}>
+            <View style={styles.premiumHeaderLeft}>
+              <Ionicons name="checkmark-circle-outline" size={24} color="#134A35" />
+              <Text style={styles.premiumTitle}>Requirements Analyzed</Text>
             </View>
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                onPress={() => {
-                  setIsEditingGuideline(true);
-                  setEditGuidelineText(JSON.stringify(analysis, null, 2));
-                }}
-                style={styles.editButton}
-              >
-                <Ionicons name="create-outline" size={16} color="#6366F1" />
-              </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
-                console.log('[Render] Close button pressed, clearing analysis');
                 if (analysisProp === undefined) {
                   setAnalysisState(null);
                 }
                 onAnalysisComplete(null);
               }}
-              style={styles.closeButton}
+              style={styles.premiumClose}
             >
-              <Ionicons name="close" size={16} color="#9CA3AF" />
+              <Ionicons name="close" size={18} color="#9CA3AF" />
             </TouchableOpacity>
+          </View>
+
+          {/* Stats Section */}
+          <View style={styles.premiumStatsContainer}>
+            <View style={styles.premiumStatBlock}>
+              <View style={styles.premiumNumberContainer}>
+                <Text style={styles.premiumNumber}>{String(completed)}</Text>
+              </View>
+              <Text style={styles.premiumLabel}>Completed</Text>
+            </View>
+
+            <View style={styles.premiumDivider} />
+
+            <View style={styles.premiumStatBlock}>
+              <View style={styles.premiumNumberContainer}>
+                <Text style={[styles.premiumNumber, styles.premiumNumberRemaining]}>
+                  {String(remaining)}
+                </Text>
+              </View>
+              <Text style={styles.premiumLabel}>Remaining</Text>
             </View>
           </View>
 
-          <View style={styles.summaryGrid}>
-          {analysis.totalCreditsRequired && (
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryNumber}>{analysis.totalCreditsRequired}</Text>
-                <Text style={styles.summaryText}>Total Credits</Text>
-            </View>
-          )}
-            {analysis.creditBreakdown?.generalEducation?.subtotal && (
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryNumber}>{analysis.creditBreakdown.generalEducation.subtotal}</Text>
-                <Text style={styles.summaryText}>General Ed</Text>
-                </View>
-              )}
-            {analysis.creditBreakdown?.major?.subtotal && (
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryNumber}>{analysis.creditBreakdown.major.subtotal}</Text>
-                <Text style={styles.summaryText}>Major</Text>
-                </View>
-              )}
-            {analysis.creditBreakdown?.generalElective && (
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryNumber}>{analysis.creditBreakdown.generalElective}</Text>
-                <Text style={styles.summaryText}>Elective</Text>
-              </View>
-          )}
-          </View>
-
-          {analysis.analysis && (analysis.analysis.completedCredits !== undefined || analysis.analysis.remainingCredits !== undefined) && (
-            <View style={styles.progressBar}>
-              <View style={styles.progressItem}>
-                <Text style={styles.progressText}>Completed</Text>
-                <Text style={styles.progressNumber}>
-                  {(() => {
-                    // Calculate completed credits from checked courses
-                    let checkedCredits = 0;
-                    if (completedCourseNames.size > 0) {
-                      checkedCredits = analysis.requiredCourses
-                        ?.filter((course: any) => {
-                          const courseName = course.nameKorean || course.name || course;
-                          return completedCourseNames.has(courseName);
-                        })
-                        .reduce((sum: number, course: any) => sum + (course.credits || 3), 0) || 0;
-                    }
-                    // Add core category credits (3 credits per completed category)
-                    const coreCredits = completedCoreCategories.size * 3;
-                    return checkedCredits + coreCredits + (analysis.analysis.completedCredits || 0);
-                  })()}
-                </Text>
-              </View>
-              <View style={styles.progressDivider} />
-              <View style={styles.progressItem}>
-                <Text style={styles.progressText}>Remaining</Text>
-                <Text style={[styles.progressNumber, styles.remainingNumber]}>
-                  {(() => {
-                    const total = analysis.totalCreditsRequired || 136;
-                    let checkedCredits = 0;
-                    if (completedCourseNames.size > 0) {
-                      checkedCredits = analysis.requiredCourses
-                        ?.filter((course: any) => {
-                          const courseName = course.nameKorean || course.name || course;
-                          return completedCourseNames.has(courseName);
-                        })
-                        .reduce((sum: number, course: any) => sum + (course.credits || 3), 0) || 0;
-                    }
-                    // Add core category credits (3 credits per completed category)
-                    const coreCredits = completedCoreCategories.size * 3;
-                    const completed = checkedCredits + coreCredits + (analysis.analysis.completedCredits || 0);
-                    return Math.max(0, total - completed);
-                  })()}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {analysis.requiredCourses && analysis.requiredCourses.length > 0 && (
-            <View style={styles.compactSection}>
-              <View style={styles.compactSectionHeader}>
-                <Text style={styles.compactSectionTitle}>
-                  Required Courses <Text style={styles.compactSectionCount}>({analysis.requiredCourses.length})</Text>
-                </Text>
-              </View>
-              <View style={styles.compactChecklist}>
-                {(expandedCourses ? analysis.requiredCourses : analysis.requiredCourses.slice(0, 6)).map((course: any, index: number) => {
-                  const courseName = course.nameKorean || course.name || course;
-                  const isCompleted = completedCourseNames.has(courseName);
-                  return (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.compactChecklistItem}
-                      onPress={async () => {
-                        const newCompleted = new Set(completedCourseNames);
-                        if (isCompleted) {
-                          newCompleted.delete(courseName);
-                        } else {
-                          newCompleted.add(courseName);
-                        }
-                        setCompletedCourseNames(newCompleted);
-                        await saveChecklistState(newCompleted, completedCoreCategories);
-                      }}
-                    >
-                      <View style={[styles.compactCheckbox, isCompleted && styles.compactCheckboxChecked]}>
-                      </View>
-                      <Text 
-                        style={[styles.compactChecklistText, isCompleted && styles.compactChecklistTextCompleted]}
-                        numberOfLines={1}
-                      >
-                        {courseName}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-                {analysis.requiredCourses.length > 6 && (
-                  <TouchableOpacity
-                    onPress={() => setExpandedCourses(!expandedCourses)}
-                    style={styles.compactViewMore}
-                  >
-                    <Text style={styles.compactViewMoreText}>
-                      {expandedCourses ? 'Show less' : `+${analysis.requiredCourses.length - 6} more`}
-                    </Text>
-                    <Ionicons 
-                      name={expandedCourses ? "chevron-up" : "chevron-down"} 
-                      size={14} 
-                      color="#426b1f" 
-                    />
-                  </TouchableOpacity>
-              )}
-              </View>
-            </View>
-          )}
-
-          {/* 핵심교양 (Core General Education) Section */}
-          <View style={styles.compactSection}>
-            <View style={styles.compactSectionHeader}>
-              <Text style={styles.compactSectionTitle}>
-                핵심교양 <Text style={styles.compactSectionCount}>({completedCoreCategories.size}/4)</Text>
-              </Text>
-              <Text style={styles.compactSectionSubtitle}>
-                {completedCoreCategories.size * 3} / 12 credits
-              </Text>
-            </View>
-            <View style={styles.compactCategoryRow}>
-              {[
-                { key: '인문1', label: '인문 1' },
-                { key: '인문2', label: '인문 2' },
-                { key: '글로벌', label: '글로벌' },
-                { key: '창의', label: '창의' },
-              ].map((category) => {
-                const isCompleted = completedCoreCategories.has(category.key);
-                return (
-                  <TouchableOpacity
-                    key={category.key}
-                    style={styles.compactCategoryItem}
-                    onPress={async () => {
-                      const newCompleted = new Set(completedCoreCategories);
-                      if (isCompleted) {
-                        newCompleted.delete(category.key);
-                      } else {
-                        newCompleted.add(category.key);
-                      }
-                      setCompletedCoreCategories(newCompleted);
-                      await saveChecklistState(completedCourseNames, newCompleted);
-                    }}
-                  >
-                    <View style={[styles.compactCheckbox, isCompleted && styles.compactCheckboxChecked]}>
-                    </View>
-                    <Text 
-                      style={[styles.compactCategoryText, isCompleted && styles.compactChecklistTextCompleted]}
-                      numberOfLines={1}
-                    >
-                      {category.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+          {/* Progress Bar */}
+          <View style={styles.progressBarContainer}>
+            <View style={styles.progressBarBackground}>
+              <View 
+                style={[
+                  styles.progressBarFill, 
+                  { width: `${progressPercentage}%` }
+                ]} 
+              />
             </View>
           </View>
 
-          {analysis.graduationCertification?.options && analysis.graduationCertification.options.length > 0 && (
-            <View style={styles.compactSection}>
-              <View style={styles.featureRow}>
-                <Text style={styles.compactSectionTitle}>Extra Features</Text>
-                <View style={styles.featureButtonsContainer}>
-                  {analysis.graduationCertification.options.map((option: string, index: number) => (
-                    <TouchableOpacity
-                      key={index}
-                      onPress={() => setShowPricingModal(true)}
-                      activeOpacity={0.8}
-                    >
-                      <LinearGradient
-                        colors={['#9333EA', '#7C3AED']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={styles.featureButton}
-                      >
-                        <Text style={styles.featureButtonText}>{option}</Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            </View>
-          )}
+          {/* View Details Button */}
+          <TouchableOpacity
+            style={styles.premiumButton}
+            onPress={() => router.push('/requirements-detail')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.premiumButtonText}>View details</Text>
+            <Ionicons name="chevron-forward" size={16} color="#134A35" />
+          </TouchableOpacity>
         </View>
-
-        {/* Courses Modal */}
-        <Modal
-          visible={showCoursesModal}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowCoursesModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.coursesModalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Required Courses</Text>
-                <TouchableOpacity
-                  onPress={() => setShowCoursesModal(false)}
-                  style={styles.modalCloseButton}
-                >
-                  <Ionicons name="close" size={24} color="#111827" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.modalCoursesList}>
-                {analysis.requiredCourses?.map((course: any, index: number) => {
-                  const courseName = course.nameKorean || course.name || course;
-                  const isCompleted = completedCourseNames.has(courseName);
-                  return (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.modalChecklistItem}
-                      onPress={async () => {
-                        const newCompleted = new Set(completedCourseNames);
-                        if (isCompleted) {
-                          newCompleted.delete(courseName);
-                        } else {
-                          newCompleted.add(courseName);
-                        }
-                        setCompletedCourseNames(newCompleted);
-                        await saveChecklistState(newCompleted, completedCoreCategories);
-                      }}
-                    >
-                      <View style={[styles.checkbox, isCompleted && styles.checkboxChecked]}>
-                      </View>
-                      <View style={styles.modalCourseInfo}>
-                        <Text style={[styles.modalChecklistText, isCompleted && styles.checklistTextCompleted]}>
-                          {courseName}
-                        </Text>
-                        {course.credits && (
-                          <Text style={styles.modalCourseCredits}>{course.credits} credits</Text>
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          </View>
-        </Modal>
-
-        {/* Pricing Modal */}
-        <PricingModal
-          visible={showPricingModal}
-          onClose={() => setShowPricingModal(false)}
-        />
-
-        {/* Edit Guideline Modal */}
-        <Modal
-          visible={isEditingGuideline}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => {
-            setIsEditingGuideline(false);
-            setEditGuidelineText('');
-          }}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.editModalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Edit Guidelines</Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    setIsEditingGuideline(false);
-                    setEditGuidelineText('');
-                  }}
-                  style={styles.modalCloseButton}
-                >
-                  <Ionicons name="close" size={24} color="#111827" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.editModalBody}>
-                <TextInput
-                  style={styles.editGuidelineInput}
-                  multiline
-                  numberOfLines={20}
-                  value={editGuidelineText}
-                  onChangeText={setEditGuidelineText}
-                  placeholder="Edit guideline data..."
-                  placeholderTextColor="#9CA3AF"
-                  textAlignVertical="top"
-                />
-              </View>
-              <View style={styles.editModalFooter}>
-                <TouchableOpacity
-                  onPress={() => {
-                    setIsEditingGuideline(false);
-                    setEditGuidelineText('');
-                  }}
-                  style={styles.cancelButton}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={async () => {
-                    try {
-                      const parsedData = JSON.parse(editGuidelineText);
-                      if (analysisProp === undefined) {
-                        setAnalysisState(parsedData);
-                      }
-                      onAnalysisComplete(parsedData);
-                      setIsEditingGuideline(false);
-                      setEditGuidelineText('');
-                    } catch (error) {
-                      Alert.alert('Error', 'Invalid JSON format. Please check your input.');
-                    }
-                  }}
-                  style={styles.saveButton}
-                >
-                  <Text style={styles.saveButtonText}>Save</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
       </View>
     );
   }
@@ -1831,6 +1630,102 @@ const styles = StyleSheet.create({
   },
   modalCloseButton: {
     padding: 4,
+  },
+  // Premium Minimal Card Styles (Apple x Linear x Notion)
+  premiumCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#EDEDED',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  premiumHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  premiumHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  premiumTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+    letterSpacing: -0.3,
+  },
+  premiumClose: {
+    padding: 4,
+    borderRadius: 6,
+  },
+  premiumStatsContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+    gap: 20,
+  },
+  premiumStatBlock: {
+    flex: 1,
+  },
+  premiumDivider: {
+    width: 1,
+    height: 44,
+    backgroundColor: '#F2F2F2',
+    marginTop: 4,
+  },
+  premiumNumberContainer: {
+    marginBottom: 6,
+  },
+  premiumNumber: {
+    fontSize: 32,
+    fontWeight: '600',
+    color: '#134A35',
+    letterSpacing: -1,
+    lineHeight: 38,
+  },
+  premiumNumberRemaining: {
+    opacity: 0.65,
+  },
+  premiumLabel: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: '#6B6B6B',
+    letterSpacing: -0.2,
+  },
+  progressBarContainer: {
+    marginBottom: 20,
+  },
+  progressBarBackground: {
+    height: 8,
+    backgroundColor: '#F2F2F2',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#134A35',
+    borderRadius: 4,
+  },
+  premiumButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+  },
+  premiumButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#134A35',
+    letterSpacing: -0.2,
   },
 });
 

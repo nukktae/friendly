@@ -1,6 +1,7 @@
 import { ENV } from '@/src/config/env';
 import {
   ClassAssignment,
+  ClassExam,
   ClassFile,
   ClassNote,
   ClassRecording,
@@ -81,27 +82,50 @@ export async function fetchClassFiles(classId: string, userId?: string): Promise
 }
 
 export async function fetchClassRecordings(classId: string, userId?: string): Promise<ClassRecording[]> {
-  if (!classId) {
+  if (!classId || !userId) {
     return [];
   }
   
-  // Try the new endpoint first (lectures-based)
-  if (userId) {
-    try {
-      const response = await fetch(`${API_BASE}/api/lectures/class/${classId}/recordings?userId=${userId}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && Array.isArray(data.recordings)) {
-          return data.recordings as ClassRecording[];
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to fetch recordings from lectures endpoint:', error);
+  // Use the transcripts API endpoint: /api/lectures/:lectureId/transcripts?userId=...
+  // Treat classId as lectureId (classes are stored as lectures)
+  try {
+    const response = await fetch(`${API_BASE}/api/lectures/${classId}/transcripts?userId=${userId}`);
+    
+    if (response.status === 404) {
+      // Lecture not found, return empty array
+      return [];
     }
+    
+    if (!response.ok) {
+      const error = await response.json();
+      console.warn('Failed to fetch transcripts:', error);
+      return [];
+    }
+    
+    const data = await response.json();
+    
+    if (data.success && Array.isArray(data.transcripts)) {
+      // Convert transcripts to ClassRecording format for display
+      return data.transcripts.map((transcript: any, index: number) => ({
+        id: transcript.transcriptionId || `transcript_${classId}_${index}`,
+        title: transcript.transcript ? transcript.transcript.substring(0, 50) + (transcript.transcript.length > 50 ? '...' : '') : `Transcript ${index + 1}`,
+        status: transcript.isCurrent ? 'ready' : (transcript.isLive ? 'processing' : 'ready'),
+        recordedAt: transcript.createdAt,
+        duration: undefined, // Duration not available in transcript data
+        transcriptId: transcript.transcriptionId || undefined,
+        playbackUrl: undefined,
+        // Store full transcript text for display
+        transcriptText: transcript.transcript,
+        isCurrent: transcript.isCurrent,
+        isLive: transcript.isLive,
+      })) as ClassRecording[];
+    }
+    
+    return [];
+  } catch (error) {
+    console.warn('Failed to fetch transcripts from API:', error);
+    return [];
   }
-  
-  // Fallback to classes endpoint (with userId if available)
-  return fetchCollection<ClassRecording>(`/api/classes/${classId}/recordings`, 'recordings', userId);
 }
 
 export async function fetchClassAssignments(classId: string, userId?: string): Promise<ClassAssignment[]> {
@@ -242,6 +266,33 @@ export async function updateAssignment(
   return data.assignment;
 }
 
+export async function getAssignmentById(
+  assignmentId: string,
+  classId: string,
+  userId: string
+): Promise<ClassAssignment> {
+  const response = await fetch(`${API_BASE}/api/classes/${classId}/assignments/${assignmentId}?userId=${userId}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    let errorMessage = 'Failed to fetch assignment';
+    try {
+      const error = await response.json();
+      errorMessage = error.error || errorMessage;
+    } catch (e) {
+      errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    }
+    throw new Error(errorMessage);
+  }
+
+  const data = await response.json();
+  return data.assignment;
+}
+
 export async function deleteAssignment(
   assignmentId: string,
   classId: string,
@@ -256,6 +307,187 @@ export async function deleteAssignment(
 
   if (!response.ok) {
     let errorMessage = 'Failed to delete assignment';
+    try {
+      const error = await response.json();
+      errorMessage = error.error || errorMessage;
+    } catch (e) {
+      errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    }
+    throw new Error(errorMessage);
+  }
+}
+
+// ============================================
+// EXAM FUNCTIONS
+// ============================================
+
+export async function fetchClassExams(classId: string, userId?: string): Promise<ClassExam[]> {
+  if (!classId || !userId) {
+    return [];
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/classes/${classId}/exams?userId=${userId}`);
+    
+    if (response.status === 404) {
+      return [];
+    }
+    
+    if (!response.ok) {
+      const error = await response.json();
+      console.warn('Failed to fetch exams:', error);
+      return [];
+    }
+    
+    const data = await response.json();
+    return data.data || [];
+  } catch (error) {
+    console.warn('Failed to fetch exams from API:', error);
+    return [];
+  }
+}
+
+export async function getExamById(
+  examId: string,
+  classId: string,
+  userId: string
+): Promise<ClassExam> {
+  const response = await fetch(`${API_BASE}/api/classes/${classId}/exams/${examId}?userId=${userId}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    let errorMessage = 'Failed to fetch exam';
+    try {
+      const error = await response.json();
+      errorMessage = error.error || errorMessage;
+    } catch (e) {
+      errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    }
+    throw new Error(errorMessage);
+  }
+
+  const data = await response.json();
+  return data.data;
+}
+
+export async function createExam(
+  classId: string,
+  userId: string,
+  examData: {
+    title: string;
+    description?: string;
+    date: string;
+    durationMinutes?: number;
+    location?: string;
+    instructions?: string;
+  }
+): Promise<ClassExam> {
+  const requestBody: any = {
+    userId,
+    title: examData.title,
+    description: examData.description || '',
+    date: examData.date,
+    durationMinutes: examData.durationMinutes || 60,
+  };
+
+  if (examData.location !== undefined) {
+    requestBody.location = examData.location || null;
+  }
+  if (examData.instructions !== undefined) {
+    requestBody.instructions = examData.instructions || null;
+  }
+
+  const url = `${API_BASE}/api/classes/${classId}/exams`;
+  console.log('Creating exam:', { url, requestBody });
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    let errorMessage = 'Failed to create exam';
+    try {
+      const error = await response.json();
+      errorMessage = error.error || errorMessage;
+    } catch (e) {
+      errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    }
+    throw new Error(errorMessage);
+  }
+
+  const data = await response.json();
+  return data.data;
+}
+
+export async function updateExam(
+  examId: string,
+  classId: string,
+  userId: string,
+  examData: {
+    title?: string;
+    description?: string;
+    date?: string;
+    durationMinutes?: number;
+    location?: string;
+    instructions?: string;
+    status?: 'upcoming' | 'completed' | 'missed' | 'in_progress';
+  }
+): Promise<ClassExam> {
+  const requestBody: any = { userId };
+  
+  if (examData.title !== undefined) requestBody.title = examData.title;
+  if (examData.description !== undefined) requestBody.description = examData.description;
+  if (examData.date !== undefined) requestBody.date = examData.date;
+  if (examData.durationMinutes !== undefined) requestBody.durationMinutes = examData.durationMinutes;
+  if (examData.location !== undefined) requestBody.location = examData.location || null;
+  if (examData.instructions !== undefined) requestBody.instructions = examData.instructions || null;
+  if (examData.status !== undefined) requestBody.status = examData.status;
+
+  const response = await fetch(`${API_BASE}/api/classes/${classId}/exams/${examId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    let errorMessage = 'Failed to update exam';
+    try {
+      const error = await response.json();
+      errorMessage = error.error || errorMessage;
+    } catch (e) {
+      errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    }
+    throw new Error(errorMessage);
+  }
+
+  const data = await response.json();
+  return data.data;
+}
+
+export async function deleteExam(
+  examId: string,
+  classId: string,
+  userId: string
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/classes/${classId}/exams/${examId}?userId=${userId}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    let errorMessage = 'Failed to delete exam';
     try {
       const error = await response.json();
       errorMessage = error.error || errorMessage;

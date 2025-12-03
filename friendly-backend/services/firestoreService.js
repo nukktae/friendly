@@ -647,6 +647,7 @@ async function getPDFChatHistory(fileId, userId, limit = 50) {
 
 // Assignments Collection
 const ASSIGNMENTS = 'assignments';
+const EXAMS = 'exams';
 
 async function createAssignment(assignmentData) {
   const assignmentId = assignmentData.id || `assignment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -761,6 +762,135 @@ async function listClassAssignments(classId, userId, limit = 100) {
   }
 }
 
+// Exams Collection
+async function createExam(examData) {
+  const examId = examData.id || `exam_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  
+  // Calculate status based on date
+  const examDate = examData.date ? new Date(examData.date) : null;
+  let status = 'upcoming';
+  if (examDate && !isNaN(examDate.getTime())) {
+    const now = new Date();
+    const durationMinutes = examData.durationMinutes || 60;
+    const endDate = new Date(examDate.getTime() + durationMinutes * 60000);
+    if (now > endDate) {
+      status = 'completed';
+    } else if (now >= examDate && now <= endDate) {
+      status = 'in_progress';
+    }
+  }
+  
+  const examDoc = {
+    id: examId,
+    userId: examData.userId,
+    classId: examData.classId || null,
+    title: examData.title,
+    description: examData.description || '',
+    date: examData.date || null,
+    durationMinutes: examData.durationMinutes || 60,
+    location: examData.location || null,
+    instructions: examData.instructions || null,
+    status: status,
+    createdAt: now,
+    updatedAt: now,
+  };
+  
+  await getDb().collection(EXAMS).doc(examId).set(examDoc);
+  return examId;
+}
+
+async function getExamById(examId, userId) {
+  const doc = await getDb().collection(EXAMS).doc(examId).get();
+  if (!doc.exists) {
+    throw new Error('Exam not found');
+  }
+  const data = doc.data();
+  if (data.userId !== userId) {
+    throw new Error('Unauthorized: Exam belongs to another user');
+  }
+  return { id: doc.id, ...data };
+}
+
+async function updateExam(examId, userId, updates) {
+  await getExamById(examId, userId); // Verify ownership
+  
+  // Recalculate status if date is being updated
+  if (updates.date !== undefined || updates.durationMinutes !== undefined) {
+    const currentExam = await getExamById(examId, userId);
+    let examDate = null;
+    if (updates.date) {
+      examDate = new Date(updates.date);
+    } else if (currentExam.date) {
+      if (typeof currentExam.date === 'string') {
+        examDate = new Date(currentExam.date);
+      } else if (currentExam.date._seconds) {
+        examDate = new Date(currentExam.date._seconds * 1000);
+      } else if (currentExam.date.seconds) {
+        examDate = new Date(currentExam.date.seconds * 1000);
+      }
+    }
+    const durationMinutes = updates.durationMinutes !== undefined ? updates.durationMinutes : (currentExam.durationMinutes || 60);
+    
+    if (examDate) {
+      const now = new Date();
+      const endDate = new Date(examDate.getTime() + durationMinutes * 60000);
+      if (now > endDate) {
+        updates.status = 'completed';
+      } else if (now >= examDate && now <= endDate) {
+        updates.status = 'in_progress';
+      } else {
+        updates.status = 'upcoming';
+      }
+    }
+  }
+  
+  // Validate status if it's being updated
+  if (updates.status !== undefined) {
+    const validStatuses = ['upcoming', 'completed', 'missed', 'in_progress'];
+    if (!validStatuses.includes(updates.status)) {
+      throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+    }
+  }
+  
+  await getDb().collection(EXAMS).doc(examId).update({
+    ...updates,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+async function deleteExam(examId, userId) {
+  await getExamById(examId, userId); // Verify ownership
+  await getDb().collection(EXAMS).doc(examId).delete();
+}
+
+async function listClassExams(classId, userId, limit = 100) {
+  try {
+    const q = await getDb().collection(EXAMS)
+      .where('userId', '==', userId)
+      .where('classId', '==', classId)
+      .orderBy('date', 'asc')
+      .limit(limit)
+      .get();
+    return q.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    if (error.message && error.message.includes('index')) {
+      const q = await getDb().collection(EXAMS)
+        .where('userId', '==', userId)
+        .where('classId', '==', classId)
+        .limit(limit)
+        .get();
+      const exams = q.docs.map(d => ({ id: d.id, ...d.data() }));
+      return exams.sort((a, b) => {
+        const aTime = a.date?._seconds || a.date?.seconds || 0;
+        const bTime = b.date?._seconds || b.date?.seconds || 0;
+        return aTime - bTime;
+      });
+    }
+    throw error;
+  }
+}
+
 module.exports = {
   getDb,
   createUserProfile,
@@ -807,6 +937,12 @@ module.exports = {
   deleteAssignment,
   listUserAssignments,
   listClassAssignments,
+  // Exam functions
+  createExam,
+  getExamById,
+  updateExam,
+  deleteExam,
+  listClassExams,
 };
 
 

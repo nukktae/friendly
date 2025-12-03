@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SuggestedClass } from '@/src/types/gpa.types';
+import { getNextFutureSemester, parseSemester, compareSemesters } from '@/src/utils/semesterUtils';
 
 interface SuggestedClassesSectionProps {
   suggestions: SuggestedClass[];
@@ -46,7 +47,44 @@ export const SuggestedClassesSection: React.FC<SuggestedClassesSectionProps> = (
     setShowAddManual(false);
   };
 
-  const aiSuggestions = suggestions.filter((s) => s.isAI);
+  // Filter AI suggestions to only show for future semesters
+  const nextFutureSemester = useMemo(() => getNextFutureSemester(), []);
+  
+  const aiSuggestions = useMemo(() => {
+    const allAI = suggestions.filter((s) => s.isAI);
+    
+    return allAI.filter((suggestion) => {
+      // If suggestion has semester info, check if it's for a future semester
+      if (suggestion.semester) {
+        const suggestionParsed = parseSemester(suggestion.semester);
+        const nextParsed = parseSemester(nextFutureSemester);
+        
+        if (suggestionParsed && nextParsed) {
+          // Check if suggestion semester is >= next future semester
+          // compareSemesters returns negative if a < b, positive if a > b
+          // We want suggestion.semester >= nextFutureSemester
+          // So we check: if suggestion year > next year, or (same year and suggestion semester >= next semester)
+          if (suggestionParsed.year > nextParsed.year) {
+            return true; // Future year
+          }
+          if (suggestionParsed.year === nextParsed.year) {
+            return suggestionParsed.semester >= nextParsed.semester; // Same year, check semester
+          }
+          return false; // Past year
+        }
+      }
+      
+      // If no semester info, show suggestion (for backward compatibility)
+      // But filter by creation date to ensure relevance
+      const now = new Date();
+      const created = new Date(suggestion.createdAt);
+      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+      
+      // Only show suggestions created in the last 6 months (relevant for future planning)
+      return created >= sixMonthsAgo;
+    });
+  }, [suggestions, nextFutureSemester]);
+  
   const manualSuggestions = suggestions.filter((s) => !s.isAI);
 
   return (

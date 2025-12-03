@@ -49,25 +49,26 @@ export const SemesterSelector: React.FC<SemesterSelectorProps> = ({
       <TouchableOpacity
         style={styles.selector}
         onPress={() => setShowDropdown(!showDropdown)}
-        activeOpacity={0.6}
+        activeOpacity={0.7}
       >
         <Text style={styles.selectedText} numberOfLines={1}>
           {getSemesterDisplayName(selectedSemester)}
         </Text>
         <Ionicons 
           name={showDropdown ? "chevron-up" : "chevron-down"} 
-          size={14} 
-          color="#9CA3AF" 
+          size={16} 
+          color="#134A35" 
+          style={{ opacity: 0.6 }}
         />
       </TouchableOpacity>
 
       {showDropdown && (
         <View style={styles.dropdownContainer}>
-            <ScrollView 
-              style={styles.dropdown} 
-              nestedScrollEnabled 
-              showsVerticalScrollIndicator={false}
-            >
+          <ScrollView 
+            style={styles.dropdown} 
+            nestedScrollEnabled 
+            showsVerticalScrollIndicator={false}
+          >
             {dropdownItems.length > 0 ? dropdownItems.map((semester, index) => {
               const isSelected = semester === selectedSemester;
               const isAddNew = semester === 'ADD_NEW';
@@ -80,33 +81,25 @@ export const SemesterSelector: React.FC<SemesterSelectorProps> = ({
                     styles.dropdownItem,
                     isSelected && styles.dropdownItemActive,
                     isAddNew && styles.addNewItem,
-                    index === 0 && styles.firstItem,
                   ]}
                   onPress={() => handleSelect(semester)}
-                  activeOpacity={0.5}
+                  activeOpacity={0.6}
                 >
                   {isAddNew ? (
                     <View style={styles.addNewContent}>
-                      <Ionicons name="add" size={16} color="#6366F1" />
+                      <Ionicons name="add-outline" size={18} color="#6B6B6B" />
                       <Text style={styles.addNewText}>Add New Semester</Text>
                     </View>
                   ) : (
                     <View style={styles.itemContent}>
-                      <View style={styles.itemLeft}>
                       <Text style={[
                         styles.dropdownItemText,
                         isSelected && styles.dropdownItemTextActive,
                       ]}>
                         {getSemesterDisplayName(semester)}
                       </Text>
-                        {isCurrent && (
-                        <View style={styles.currentBadge}>
-                          <Text style={styles.currentBadgeText}>Current</Text>
-                        </View>
-                      )}
-                      </View>
                       {isSelected && (
-                        <Ionicons name="checkmark" size={14} color="#6366F1" />
+                        <Ionicons name="checkmark" size={16} color="#134A35" />
                       )}
                     </View>
                   )}
@@ -117,8 +110,8 @@ export const SemesterSelector: React.FC<SemesterSelectorProps> = ({
                 <Text style={styles.emptyText}>No semesters available</Text>
               </View>
             )}
-            </ScrollView>
-          </View>
+          </ScrollView>
+        </View>
       )}
     </View>
   );
@@ -128,26 +121,26 @@ const styles = StyleSheet.create({
   wrapper: {
     position: 'relative',
     zIndex: 1000,
+    marginBottom: 20,
   },
   selector: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#FAFAFA',
-    borderRadius: 8,
-    borderWidth: 0.5,
-    borderColor: '#E4E4E7',
-    marginBottom: 8,
-    minHeight: 36,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#EAEAEA',
+    minHeight: 48,
   },
   selectedText: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '500',
-    color: '#18181B',
-    letterSpacing: -0.2,
+    color: '#111827',
+    letterSpacing: -0.3,
   },
   dropdownContainer: {
     position: 'absolute',
@@ -155,92 +148,68 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    borderWidth: 0.5,
-    borderColor: '#E4E4E7',
-    maxHeight: 280,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#ECECEC',
+    maxHeight: 320,
     zIndex: 1001,
-    marginTop: 2,
+    marginTop: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 20,
+    elevation: 8,
     overflow: 'hidden',
   },
   dropdown: {
-    maxHeight: 280,
+    maxHeight: 320,
   },
   dropdownItem: {
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#F4F4F5',
-  },
-  firstItem: {
-    paddingTop: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
   },
   dropdownItemActive: {
-    backgroundColor: '#F8F9FF',
+    backgroundColor: 'rgba(19, 74, 53, 0.05)',
   },
   itemContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  itemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flex: 1,
-  },
   dropdownItemText: {
-    fontSize: 13,
-    color: '#3F3F46',
+    fontSize: 15,
+    color: '#111827',
     fontWeight: '400',
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
   },
   dropdownItemTextActive: {
-    color: '#6366F1',
+    color: '#134A35',
     fontWeight: '500',
   },
   addNewItem: {
-    borderTopWidth: 0.5,
-    borderTopColor: '#E4E4E7',
-    marginTop: 2,
-    paddingTop: 10,
-    backgroundColor: '#FAFAFA',
+    borderTopWidth: 1,
+    borderTopColor: '#F2F2F2',
+    marginTop: 4,
+    paddingTop: 16,
   },
   addNewContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
   },
   addNewText: {
-    fontSize: 13,
-    color: '#6366F1',
-    fontWeight: '500',
-    letterSpacing: -0.2,
-  },
-  currentBadge: {
-    backgroundColor: '#6366F1',
-    paddingHorizontal: 5,
-    paddingVertical: 1.5,
-    borderRadius: 3,
-  },
-  currentBadgeText: {
-    fontSize: 9,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    letterSpacing: 0.2,
+    fontSize: 15,
+    color: '#6B6B6B',
+    fontWeight: '400',
+    letterSpacing: -0.3,
   },
   emptyDropdown: {
-    padding: 16,
+    padding: 24,
     alignItems: 'center',
   },
   emptyText: {
-    fontSize: 13,
-    color: '#71717A',
+    fontSize: 14,
+    color: '#6B6B6B',
     fontWeight: '400',
   },
 });

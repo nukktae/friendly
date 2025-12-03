@@ -14,6 +14,7 @@ import {
   View,
   Dimensions,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { PDFFile, updatePDFAnnotations } from '@/src/services/pdf/pdfService';
 import { getPDFDownloadUrl } from '@/src/services/pdf/pdfService';
 import { PDFAnalysisPanel } from './PDFAnalysisPanel';
@@ -207,6 +208,7 @@ export function PDFViewer({
   const scrollViewRef = useRef<ScrollView>(null);
   const pdfViewerRef = useRef<View>(null);
   const pageRefs = useRef<Map<number, { canvas: HTMLCanvasElement | null; textLayer: HTMLDivElement | null }>>(new Map());
+  const refreshHandlerRef = useRef<(() => void) | null>(null);
 
   // Listen for PDF.js loading completion
   useEffect(() => {
@@ -313,28 +315,32 @@ export function PDFViewer({
     setLoadError(null);
     
     try {
-      // Load PDF.js first
+      // Fetch the download URL
+      console.log('Fetching PDF download URL...');
+      const url = await getPDFDownloadUrl(pdf.id, userId);
+      
+      if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+        throw new Error('Invalid PDF URL - must be a valid HTTP/HTTPS URL');
+      }
+      
+      console.log('PDF URL:', url);
+      setPdfUrl(url);
+      
+      // On mobile, use WebView to display PDF inside the app
+      if (Platform.OS !== 'web') {
+        setIsLoadingPDF(false);
+        return;
+      }
+      
+      // Load PDF.js for web
       if (Platform.OS === 'web') {
         const loaded = await loadPDFJS();
         if (!loaded || !pdfjsLib) {
           throw new Error('Failed to load PDF.js library');
         }
         setIsPDFJSReady(true);
-      }
-      
-      // Fetch the download URL
-      console.log('Fetching PDF download URL...');
-      const url = await getPDFDownloadUrl(pdf.id, userId);
-      
-      if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
-        throw new Error('Invalid PDF URL - must be a public HTTPS URL');
-      }
-      
-      console.log('PDF URL:', url);
-      setPdfUrl(url);
-      
-      // Load PDF document
-      if (Platform.OS === 'web' && pdfjsLib) {
+        
+        // Load PDF document
         const loadingTask = pdfjsLib.getDocument(url);
         const doc = await loadingTask.promise;
         console.log('PDF loaded successfully, pages:', doc.numPages);
@@ -668,6 +674,60 @@ export function PDFViewer({
       );
     }
 
+    // On mobile, use WebView to display PDF
+    if (Platform.OS !== 'web') {
+      if (!pdfUrl) {
+        return (
+          <View style={styles.pdfLoadingContainer}>
+            <Ionicons name="document-text" size={48} color="#9ca3af" />
+            <Text style={styles.pdfLoadingText}>PDF not available</Text>
+          </View>
+        );
+      }
+      
+      const screenHeight = Dimensions.get('window').height;
+      const mobilePreviewHeight = screenHeight * 0.29; // Match web preview height
+      
+      return (
+        <View style={[styles.webViewContainer, { height: mobilePreviewHeight }]}>
+          <WebView
+            source={{ uri: pdfUrl }}
+            style={styles.webView}
+            startInLoadingState={true}
+            renderLoading={() => (
+              <View style={styles.webViewLoading}>
+                <ActivityIndicator size="large" color="#6B7C32" />
+                <Text style={styles.webViewLoadingText}>Loading PDF...</Text>
+              </View>
+            )}
+            onError={(syntheticEvent) => {
+              const { nativeEvent } = syntheticEvent;
+              console.error('WebView error:', nativeEvent);
+              setLoadError('Failed to load PDF in viewer');
+            }}
+            onHttpError={(syntheticEvent) => {
+              const { nativeEvent } = syntheticEvent;
+              console.error('WebView HTTP error:', nativeEvent);
+              setLoadError(`HTTP Error: ${nativeEvent.statusCode}`);
+            }}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            allowsInlineMediaPlayback={true}
+            mediaPlaybackRequiresUserAction={false}
+            scalesPageToFit={true}
+          />
+          {/* Page Indicator for Mobile */}
+          {pdf && (
+            <View style={styles.mobilePageIndicator}>
+              <Text style={styles.pageIndicatorText}>
+                {pdf.pages ? `1 / ${pdf.pages}` : 'PDF'}
+              </Text>
+            </View>
+          )}
+        </View>
+      );
+    }
+
     if (!pdfUrl || !isPDFJSReady) {
       return (
         <View style={styles.pdfLoadingContainer}>
@@ -823,42 +883,63 @@ export function PDFViewer({
             }) : null}
           </ScrollView>
           
-          {/* Page Navigation Controls */}
+          {/* Floating Navigation Buttons */}
           {numPages && numPages > 1 ? (
-            <View style={styles.pageControls}>
+            <>
+              {/* Left Arrow - Floating */}
               <TouchableOpacity
                 onPress={() => {
                   const newPage = Math.max(1, currentPage - 1);
                   setCurrentPage(newPage);
                 }}
                 disabled={currentPage === 1}
-                style={[styles.pageNavButton, currentPage === 1 && styles.pageNavButtonDisabled]}
+                style={[
+                  styles.floatingNavButton,
+                  styles.floatingNavButtonLeft,
+                  currentPage === 1 && styles.floatingNavButtonDisabled
+                ]}
+                activeOpacity={0.7}
               >
-                <Ionicons name="chevron-back" size={20} color={currentPage === 1 ? "#9ca3af" : "#111827"} />
+                <Ionicons 
+                  name="chevron-back" 
+                  size={20} 
+                  color={currentPage === 1 ? "#9ca3af" : "#6B7C32"} 
+                />
               </TouchableOpacity>
               
-              <View style={styles.pageInfo}>
-                <Text style={styles.pageText}>
-                  Page {currentPage} of {numPages}
-                </Text>
-                {pdf && pdf.pages && pdf.pages !== numPages && (
-                  <Text style={styles.pageCountMismatch}>
-                    (Backend: {pdf.pages} pages)
-                  </Text>
-                )}
-              </View>
-              
+              {/* Right Arrow - Floating */}
               <TouchableOpacity
                 onPress={() => {
                   const newPage = Math.min(numPages, currentPage + 1);
                   setCurrentPage(newPage);
                 }}
                 disabled={currentPage === numPages}
-                style={[styles.pageNavButton, currentPage === numPages && styles.pageNavButtonDisabled]}
+                style={[
+                  styles.floatingNavButton,
+                  styles.floatingNavButtonRight,
+                  currentPage === numPages && styles.floatingNavButtonDisabled
+                ]}
+                activeOpacity={0.7}
               >
-                <Ionicons name="chevron-forward" size={20} color={currentPage === numPages ? "#9ca3af" : "#111827"} />
+                <Ionicons 
+                  name="chevron-forward" 
+                  size={20} 
+                  color={currentPage === numPages ? "#9ca3af" : "#6B7C32"} 
+                />
               </TouchableOpacity>
-            </View>
+              
+              {/* Page Indicator - Compact Caption */}
+              <View style={styles.pageIndicator}>
+                <Text style={styles.pageIndicatorText}>
+                  {currentPage} / {numPages}
+                </Text>
+                {pdf && pdf.pages && pdf.pages !== numPages && (
+                  <Text style={styles.pageCountMismatch}>
+                    (Backend: {pdf.pages})
+                  </Text>
+                )}
+              </View>
+            </>
           ) : null}
         </View>
       );
@@ -888,7 +969,7 @@ export function PDFViewer({
     switch (activeTab) {
       case 'summary':
         return (
-          <ScrollView style={styles.tabContent} contentContainerStyle={styles.tabContentContainer}>
+          <View style={styles.tabContent}>
             {pdf && (
               <PDFAnalysisPanel
                 pdf={pdf}
@@ -896,9 +977,12 @@ export function PDFViewer({
                 selectedPage={selectedPage}
                 onPageSelect={setSelectedPage}
                 onAnalysisComplete={onUpdate}
+                onRefreshRequest={(handler) => {
+                  refreshHandlerRef.current = handler;
+                }}
               />
             )}
-          </ScrollView>
+          </View>
         );
       case 'chat':
         return (
@@ -962,6 +1046,9 @@ export function PDFViewer({
     }
   }, [visible, onClose]);
 
+  const screenHeight = Dimensions.get('window').height;
+  const previewHeight = screenHeight * 0.29; // 29% of screen height - more compact
+
   return (
     <Modal
       visible={visible}
@@ -971,70 +1058,93 @@ export function PDFViewer({
       hardwareAccelerated={true}
     >
       <View style={styles.container}>
-        {/* Header */}
+        {/* Sticky Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="arrow-back" size={24} color="#111827" />
-          </TouchableOpacity>
-          <View style={styles.headerContent}>
-            <Text style={styles.headerTitle} numberOfLines={1}>
-              {pdf.title}
-            </Text>
+          {/* Top Row: Back | Title | External Link */}
+          <View style={styles.headerTopRow}>
+            <TouchableOpacity onPress={onClose} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#111827" />
+            </TouchableOpacity>
+            <View style={styles.headerTitleContainer}>
+              <Text style={styles.headerTitle} numberOfLines={1}>
+                {pdf.title}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleOpenPDF}
+              disabled={isLoading}
+              style={styles.externalLinkButton}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#6B7C32" />
+              ) : (
+                <Ionicons name="open-outline" size={24} color="#6B7C32" />
+              )}
+            </TouchableOpacity>
+          </View>
+          {/* Sub-row: Page count info */}
+          <View style={styles.headerSubRow}>
             <Text style={styles.headerSubtitle}>
               {pdf.pages} pages • {formatFileSize(pdf.size)}
             </Text>
           </View>
-          <TouchableOpacity
-            onPress={handleOpenPDF}
-            disabled={isLoading}
-            style={styles.openButtonHeader}
-          >
-            {isLoading ? (
-              <ActivityIndicator size="small" color="#6B7C32" />
-            ) : (
-              <Ionicons name="open-outline" size={24} color="#6B7C32" />
-            )}
-          </TouchableOpacity>
         </View>
 
-        {/* PDF Viewer - Always visible on top */}
-        <View style={styles.pdfSection}>
+        {/* PDF Preview Section - Fixed */}
+        <View style={[styles.pdfSection, { minHeight: previewHeight }]}>
           {renderPDFViewer()}
         </View>
 
-        {/* Toggle Tabs for Summary and Chat */}
-        <View style={styles.toggleTabsContainer}>
-          <TouchableOpacity
-            style={[styles.toggleTab, activeTab === 'summary' && styles.toggleTabActive]}
-            onPress={() => setActiveTab('summary')}
-          >
-            <Ionicons
-              name="sparkles"
-              size={20}
-              color={activeTab === 'summary' ? '#6B7C32' : '#9ca3af'}
-            />
-            <Text style={[styles.toggleTabLabel, activeTab === 'summary' && styles.toggleTabLabelActive]}>
-              Summary
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.toggleTab, activeTab === 'chat' && styles.toggleTabActive]}
-            onPress={() => setActiveTab('chat')}
-          >
-            <Ionicons
-              name="chatbubbles"
-              size={20}
-              color={activeTab === 'chat' ? '#6B7C32' : '#9ca3af'}
-            />
-            <Text style={[styles.toggleTabLabel, activeTab === 'chat' && styles.toggleTabLabelActive]}>
-              Chat
-            </Text>
-          </TouchableOpacity>
+        {/* Tabs - Sticky */}
+        <View style={styles.tabsContainer}>
+          <View style={styles.tabsRow}>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'summary' && styles.tabActive]}
+              onPress={() => setActiveTab('summary')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, activeTab === 'summary' && styles.tabTextActive]}>
+                Summary
+              </Text>
+              {activeTab === 'summary' && <View style={styles.tabIndicator} />}
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'chat' && styles.tabActive]}
+              onPress={() => setActiveTab('chat')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, activeTab === 'chat' && styles.tabTextActive]}>
+                Chat
+              </Text>
+              {activeTab === 'chat' && <View style={styles.tabIndicator} />}
+            </TouchableOpacity>
+          </View>
+          {/* Refresh Button - Right aligned when Summary tab is active */}
+          {activeTab === 'summary' && pdf?.analysis && (
+            <TouchableOpacity
+              style={styles.tabRefreshButton}
+              onPress={() => {
+                // Trigger re-analysis via ref handler
+                if (refreshHandlerRef.current) {
+                  refreshHandlerRef.current();
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="refresh" size={18} color="#6B7C32" />
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Tab Content */}
-        {renderTabContent()}
+        {/* Scrollable Tab Content */}
+        <ScrollView 
+          style={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {renderTabContent()}
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -1046,51 +1156,81 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
+    backgroundColor: '#ffffff',
     paddingTop: Platform.OS === 'ios' ? 60 : 20,
     paddingBottom: 16,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-    backgroundColor: '#ffffff',
+    borderBottomColor: '#E5E7EB',
+    zIndex: 10,
   },
-  closeButton: {
-    padding: 8,
-    marginRight: 8,
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  headerContent: {
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  headerTitleContainer: {
     flex: 1,
+    paddingHorizontal: 12,
+    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: '#111827',
+    textAlign: 'center',
+  },
+  externalLinkButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+  },
+  headerSubRow: {
+    alignItems: 'center',
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 2,
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '400',
   },
-  openButtonHeader: {
-    padding: 8,
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 40,
   },
   pdfSection: {
-    height: 400,
-    backgroundColor: '#f9fafb',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   tabContent: {
-    flex: 1,
+    paddingHorizontal: 0,
   },
   tabContentContainer: {
     padding: 16,
   },
   pdfViewerContainer: {
     height: '100%',
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#F9FAFB',
     overflow: 'hidden',
+    position: 'relative',
   },
   pdfScrollContainer: {
     flexDirection: 'row',
@@ -1099,15 +1239,54 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 12,
     position: 'relative',
   },
   pdfPageContainer: {
     position: 'relative',
     backgroundColor: '#ffffff',
-    borderRadius: 4,
+    borderRadius: 8,
     overflow: 'hidden',
     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+  },
+  floatingNavButton: {
+    position: 'absolute',
+    top: '50%',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    zIndex: 5,
+  },
+  floatingNavButtonLeft: {
+    left: 16,
+    transform: [{ translateY: -22 }],
+  },
+  floatingNavButtonRight: {
+    right: 16,
+    transform: [{ translateY: -22 }],
+  },
+  floatingNavButtonDisabled: {
+    opacity: 0.4,
+  },
+  pageIndicator: {
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 16,
+  },
+  pageIndicatorText: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#6B7280',
   },
   pageRenderingIndicator: {
     position: 'absolute',
@@ -1155,35 +1334,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
   },
-  pageControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  webViewContainer: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  webView: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  webViewLoading: {
+    flex: 1,
     justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    gap: 16,
-  },
-  pageNavButton: {
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#f9fafb',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  pageNavButtonDisabled: {
-    opacity: 0.5,
-  },
-  pageInfo: {
     alignItems: 'center',
-    minWidth: 120,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
   },
-  pageText: {
+  webViewLoadingText: {
+    marginTop: 12,
     fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  mobilePageIndicator: {
+    position: 'absolute',
+    bottom: 4,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingVertical: 4,
   },
   pageCountMismatch: {
     fontSize: 11,
@@ -1227,33 +1406,62 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#6B7C32',
   },
-  toggleTabsContainer: {
+  tabsContainer: {
     flexDirection: 'row',
     backgroundColor: '#ffffff',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 0,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-    paddingHorizontal: 16,
-  },
-  toggleTab: {
-    flex: 1,
-    flexDirection: 'row',
+    borderBottomColor: '#E5E7EB',
+    zIndex: 5,
     alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    gap: 20,
+    flex: 1,
+  },
+  tabRefreshButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E3E3E3',
     justifyContent: 'center',
-    paddingVertical: 12,
-    gap: 6,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  toggleTabActive: {
-    borderBottomColor: '#6B7C32',
+  tab: {
+    paddingBottom: 12,
+    paddingTop: 12,
+    position: 'relative',
+    minHeight: 44,
+    justifyContent: 'center',
   },
-  toggleTabLabel: {
-    fontSize: 14,
-    color: '#9ca3af',
-    fontWeight: '500',
+  tabActive: {},
+  tabText: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: '#9CA3AF',
   },
-  toggleTabLabelActive: {
+  tabTextActive: {
     color: '#6B7C32',
     fontWeight: '600',
+  },
+  tabIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#6B7C32',
   },
 });

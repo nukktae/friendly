@@ -25,14 +25,56 @@ const formatDuration = (seconds?: number) => {
   return `${minutes}m ${remainingSeconds.toString().padStart(2, '0')}s`;
 };
 
-const formatDate = (value?: string) => {
+const formatDate = (value?: string | { _seconds?: number; _nanoseconds?: number; seconds?: number; nanoseconds?: number }) => {
   if (!value) return 'Date not available';
-  const date = new Date(value);
+  
+  let date: Date;
+  if (typeof value === 'string') {
+    date = new Date(value);
+  } else if (value._seconds) {
+    date = new Date(value._seconds * 1000);
+  } else if (value.seconds) {
+    date = new Date(value.seconds * 1000);
+  } else {
+    return 'Date not available';
+  }
+  
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  
   return date.toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: 'numeric',
+  });
+};
+
+const formatTime = (value?: string | { _seconds?: number; _nanoseconds?: number; seconds?: number; nanoseconds?: number }) => {
+  if (!value) return '';
+  
+  let date: Date;
+  if (typeof value === 'string') {
+    date = new Date(value);
+  } else if (value._seconds) {
+    date = new Date(value._seconds * 1000);
+  } else if (value.seconds) {
+    date = new Date(value.seconds * 1000);
+  } else {
+    return '';
+  }
+  
+  return date.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
   });
 };
 
@@ -55,13 +97,15 @@ export function ClassRecordingsSection({
   if (!isLoading && !recordings.length) {
     return (
       <View style={styles.emptyState}>
+        <View style={styles.emptyIcon}>
+          <Ionicons name="mic" size={48} color="#D9534F" />
+        </View>
         <Text style={styles.emptyTitle}>No recordings yet</Text>
         <Text style={styles.emptyText}>
-          Start recording lectures to capture transcripts and summaries.
+          Record audio notes for this class
         </Text>
-        <TouchableOpacity style={styles.recordButton} onPress={onRecordNew}>
-          <Ionicons name="mic" size={18} color="#fff" />
-          <Text style={styles.recordButtonText}>Record Lecture</Text>
+        <TouchableOpacity style={styles.recordButton} onPress={onRecordNew} activeOpacity={0.8}>
+          <Text style={styles.recordButtonText}>Start Recording</Text>
         </TouchableOpacity>
       </View>
     );
@@ -74,24 +118,34 @@ export function ClassRecordingsSection({
           key={recording.id}
           style={styles.card}
           onPress={() => onRecordingPress?.(recording)}
-          activeOpacity={0.8}
+          activeOpacity={0.98}
         >
-          <View style={styles.icon}>
-            <Ionicons name="mic" size={24} color="#ef4444" />
+          <View style={styles.iconContainer}>
+            <Ionicons name="mic" size={22} color="#D9534F" />
           </View>
 
           <View style={styles.info}>
-            <View style={styles.headerRow}>
-              <Text style={styles.title}>{recording.title}</Text>
-              <View style={[styles.statusChip, styles[`status_${recording.status}`]]}>
-                <Text style={styles.statusText}>{recording.status.toUpperCase()}</Text>
-              </View>
-            </View>
-            <Text style={styles.metaText}>{formatDate(recording.recordedAt)}</Text>
-            <Text style={styles.metaText}>{formatDuration(recording.duration)}</Text>
+            <Text style={styles.name} numberOfLines={1}>
+                {(recording as any).transcriptText 
+                  ? ((recording as any).transcriptText.substring(0, 60) + ((recording as any).transcriptText.length > 60 ? '...' : ''))
+                  : recording.title}
+              </Text>
+            <Text style={styles.metaText} numberOfLines={1}>
+              {formatDate(recording.recordedAt)} {formatTime(recording.recordedAt)}
+              {recording.duration && ` · ${formatDuration(recording.duration)}`}
+            </Text>
           </View>
 
-          <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+          <TouchableOpacity 
+            style={styles.moreButton}
+            activeOpacity={0.7}
+            onPress={(e) => {
+              e.stopPropagation();
+              onRecordingPress?.(recording);
+            }}
+          >
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
         </TouchableOpacity>
       ))}
     </View>
@@ -106,86 +160,94 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: '#fef2f2',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#fee2e2',
-    gap: 12,
+    minHeight: 72,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  icon: {
+  iconContainer: {
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: '#fee2e2',
+    borderRadius: 12,
+    backgroundColor: '#FCECEC',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
+    position: 'relative',
   },
   info: {
     flex: 1,
-    gap: 2,
+    justifyContent: 'center',
+    minHeight: 48,
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  title: {
-    flex: 1,
+  name: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
+    color: '#1A1A1A',
+    marginBottom: 4,
   },
   metaText: {
-    fontSize: 13,
-    color: '#6b7280',
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '400',
   },
-  statusChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  status_processing: {
-    backgroundColor: '#f59e0b',
-  },
-  status_ready: {
-    backgroundColor: '#10b981',
-  },
-  status_failed: {
-    backgroundColor: '#ef4444',
+  moreButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
   },
   emptyState: {
-    padding: 24,
+    paddingTop: 64,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
     alignItems: 'center',
-    gap: 12,
+  },
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FCECEC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: '#1A1A1A',
+    marginBottom: 24,
   },
   emptyText: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 13,
+    color: '#6B7280',
     textAlign: 'center',
+    marginBottom: 24,
   },
   recordButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#6B7C32',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    height: 44,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: '#2F602E',
     borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   recordButtonText: {
     color: '#fff',
+    fontSize: 15,
     fontWeight: '600',
   },
   loadingContainer: {

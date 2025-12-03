@@ -445,6 +445,26 @@ router.post('/:userId/suggestions', async (req, res) => {
  * Generate AI-powered class suggestions
  */
 async function generateAISuggestions({ userId, completedCourses, remainingCredits, major }) {
+  // Calculate next future semester for suggestions
+  // If we're in Nov-Dec, suggest next Spring
+  // If we're in Jan-Jul, suggest next Fall
+  // Otherwise suggest next semester
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1; // 1-12
+  
+  let targetSemester;
+  if (month >= 11) {
+    // November or December - suggest next year's Spring
+    targetSemester = `${year + 1} Spring`;
+  } else if (month <= 7) {
+    // January through July - we're in Spring, suggest current year Fall
+    targetSemester = `${year} Fall`;
+  } else {
+    // August through October - we're in Fall, suggest next year's Spring
+    targetSemester = `${year + 1} Spring`;
+  }
+  
   // For now, return mock suggestions
   // In the future, this could use OpenAI API to generate intelligent suggestions
   const mockSuggestions = [
@@ -454,6 +474,7 @@ async function generateAISuggestions({ userId, completedCourses, remainingCredit
       credits: 3,
       reason: 'Builds on fundamental programming concepts you\'ve already completed',
       isAI: true,
+      semester: targetSemester,
       createdAt: new Date(),
     },
     {
@@ -462,6 +483,7 @@ async function generateAISuggestions({ userId, completedCourses, remainingCredit
       credits: 3,
       reason: 'Essential for software engineering track',
       isAI: true,
+      semester: targetSemester,
       createdAt: new Date(),
     },
   ];

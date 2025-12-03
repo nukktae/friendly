@@ -215,11 +215,15 @@ export async function transcribeLecture(
   // Log FormData contents (for debugging) - Note: FormData.entries() might not work in all browsers
   console.log(`[transcribeLecture] FormData entries (attempting to log):`);
   try {
-    for (const [key, value] of formData.entries()) {
-      console.log(`  ${key}: ${value} (type: ${typeof value})`);
+    // Type assertion for FormData entries - may not be available in all environments
+    const entries = (formData as any).entries?.();
+    if (entries) {
+      for (const [key, value] of entries) {
+        console.log(`  ${key}: ${value} (type: ${typeof value})`);
+      }
     }
-  } catch (e) {
-    console.log(`  (Cannot iterate FormData: ${e.message})`);
+  } catch (e: any) {
+    console.log(`  (Cannot iterate FormData: ${e?.message || String(e)})`);
   }
   console.log('==========================================\n');
 
@@ -536,19 +540,40 @@ export async function getLectures(params?: {
 
   const url = `${API_BASE}/api/lectures${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
   
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to fetch lectures');
+    if (!response.ok) {
+      let errorMessage = 'Failed to fetch lectures';
+      try {
+        const error = await response.json();
+        errorMessage = error.error || errorMessage;
+      } catch {
+        // If response is not JSON, use status text
+        errorMessage = `Failed to fetch lectures: ${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    // Re-throw if it's already an Error with a message
+    if (error instanceof Error) {
+      throw error;
+    }
+    // Handle network errors
+    if (error?.message?.includes('Network request failed') || 
+        error?.message?.includes('Failed to fetch') ||
+        error?.name === 'TypeError') {
+      throw new Error(`Network request failed. Please ensure the backend server is running at ${API_BASE}`);
+    }
+    throw error;
   }
-
-  return await response.json();
 }
 
 /**

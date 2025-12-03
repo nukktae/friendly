@@ -1,17 +1,47 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import React, { useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
+import React, { useState, useEffect, useRef } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
     Animated,
-    Dimensions,
+  Platform,
     ScrollView,
+  StatusBar,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import { useApp } from '@/src/context/AppContext';
+import { getAssignmentById, updateAssignment, deleteAssignment } from '@/src/services/classes/classResourcesService';
+import { ClassAssignment } from '@/src/types';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const ASSIGNMENT_TYPE_ICONS: Record<string, string> = {
+  ppt: 'document-text',
+  report: 'document',
+  'team-meeting': 'people',
+  exam: 'school',
+  homework: 'create',
+  project: 'folder',
+  other: 'ellipse',
+};
+
+const ASSIGNMENT_TYPE_LABELS: Record<string, string> = {
+  ppt: 'PPT',
+  report: 'Report',
+  'team-meeting': 'Team Meeting',
+  exam: 'Exam',
+  homework: 'Homework',
+  project: 'Project',
+  other: 'Other',
+};
+
+const STATUS_BADGE_STYLES: Record<string, { bg: string; text: string }> = {
+  not_started: { bg: '#E2E8F0', text: '#475569' },
+  in_progress: { bg: '#FFE9C7', text: '#C58104' },
+  completed: { bg: '#E8F5E9', text: '#2F602E' },
+};
 
 interface AssignmentDetailScreenProps {
   id: string;
@@ -19,9 +49,11 @@ interface AssignmentDetailScreenProps {
   date: string;
   time: string;
   type: string;
-  location?: string;
-  color?: string;
+  description?: string;
+  status?: 'not_started' | 'in_progress' | 'completed';
+  classId?: string;
   onBack: () => void;
+  error?: string;
 }
 
 export default function AssignmentDetailScreen({
@@ -30,298 +62,334 @@ export default function AssignmentDetailScreen({
   date,
   time,
   type,
-  location,
-  color,
+  description,
+  status = 'not_started',
+  classId,
   onBack,
+  error,
 }: AssignmentDetailScreenProps) {
-  const scaleAnim = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const [activeSection, setActiveSection] = useState<'details' | 'attachments' | 'submission'>('details');
+  const router = useRouter();
+  const { user } = useApp();
+  const [assignment, setAssignment] = useState<ClassAssignment | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const statusBadgeAnim = useRef(new Animated.Value(1)).current;
+  const toastAnim = useRef(new Animated.Value(0)).current;
 
-  // Calculate days until
-  const daysUntil = Math.ceil((new Date(date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-  const isUrgent = daysUntil <= 2;
-  const dateObj = new Date(date);
-  const formattedDate = dateObj.toLocaleDateString('en-US', { 
-    weekday: 'long', 
-    month: 'long', 
-    day: 'numeric', 
-    year: 'numeric' 
-  });
+  const currentStatus = assignment?.status || status;
+  const statusBadgeStyle = STATUS_BADGE_STYLES[currentStatus] || STATUS_BADGE_STYLES.not_started;
 
-  React.useEffect(() => {
-    Animated.parallel([
-      Animated.spring(scaleAnim, {
+  useEffect(() => {
+    if (classId && user?.uid && !assignment) {
+      loadAssignment();
+    }
+  }, [classId, user?.uid]);
+
+  useEffect(() => {
+    if (showToast) {
+      Animated.spring(toastAnim, {
         toValue: 1,
+        useNativeDriver: true,
         tension: 50,
         friction: 7,
+      }).start();
+
+      const timer = setTimeout(() => {
+        Animated.timing(toastAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start(() => {
+          setShowToast(false);
+        });
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [showToast]);
+
+  const loadAssignment = async () => {
+    if (!classId || !user?.uid) return;
+    try {
+      setIsLoading(true);
+      const data = await getAssignmentById(id, classId, user.uid);
+      setAssignment(data);
+    } catch (err: any) {
+      console.error('Error loading assignment:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatDueDate = (dateString?: string) => {
+    if (!dateString) return 'No due date';
+    const date = new Date(dateString);
+    return date.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+    });
+  };
+
+  const formatDateOnly = (dateString?: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
+  const formatTime = (dateString?: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: 'numeric',
+    });
+  };
+
+  const handleStatusChange = async (newStatus: 'not_started' | 'in_progress' | 'completed') => {
+    if (!classId || !user?.uid || isUpdating) return;
+
+    try {
+      setIsUpdating(true);
+
+      // Animate status badge
+      Animated.sequence([
+        Animated.timing(statusBadgeAnim, {
+          toValue: 0.95,
+          duration: 100,
         useNativeDriver: true,
       }),
-      Animated.timing(fadeAnim, {
+        Animated.timing(statusBadgeAnim, {
         toValue: 1,
-        duration: 600,
+          duration: 100,
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+
+      await updateAssignment(id, classId, user.uid, { status: newStatus });
+      
+      const updated = await getAssignmentById(id, classId, user.uid);
+      setAssignment(updated);
+
+      // Show toast
+      const statusLabels: Record<string, string> = {
+        not_started: 'Not Started',
+        in_progress: 'In Progress',
+        completed: 'Completed',
+      };
+      setToastMessage(`Marked as ${statusLabels[newStatus]}`);
+      setShowToast(true);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to update status');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleDelete = () => {
+    if (!classId || !user?.uid) return;
+
+    Alert.alert(
+      'Delete Assignment',
+      'Are you sure you want to delete this assignment?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteAssignment(id, classId, user.uid);
+              onBack();
+            } catch (err: any) {
+              Alert.alert('Error', err.message || 'Failed to delete assignment');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const getPrimaryAction = () => {
+    switch (currentStatus) {
+      case 'not_started':
+        return { label: 'Start Assignment', action: () => handleStatusChange('in_progress') };
+      case 'in_progress':
+        return { label: 'Mark as Completed', action: () => handleStatusChange('completed') };
+      case 'completed':
+        return { label: 'Mark as In Progress', action: () => handleStatusChange('in_progress') };
+      default:
+        return { label: 'Start Assignment', action: () => handleStatusChange('in_progress') };
+    }
+  };
+
+  const primaryAction = getPrimaryAction();
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color="#1A1A1A" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Assignment</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={['#fafafa', '#ffffff']}
-        style={StyleSheet.absoluteFillObject}
-      />
+      <StatusBar barStyle="dark-content" />
 
-      {/* Modern Header */}
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={22} color="#111827" />
+          <Ionicons name="arrow-back" size={22} color="#1A1A1A" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Assignment Details</Text>
-        <TouchableOpacity style={styles.moreButton}>
-          <Ionicons name="ellipsis-horizontal" size={22} color="#111827" />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Assignment</Text>
+        <View style={styles.placeholder} />
       </View>
 
       <ScrollView 
         style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Hero Card */}
-        <Animated.View style={[styles.heroCard, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
-          <View style={styles.heroTop}>
-            <View style={[styles.typeIcon, { backgroundColor: type === 'exam' ? '#fee2e2' : '#dbeafe' }]}>
-              <Ionicons 
-                name={type === 'exam' ? 'clipboard' : 'document-text'} 
-                size={28} 
-                color={type === 'exam' ? '#dc2626' : '#2563eb'} 
-              />
-            </View>
-            <View style={[
-              styles.typeBadge,
-              { backgroundColor: type === 'exam' ? '#fef2f2' : '#eff6ff' }
-            ]}>
-              <Text style={[
-                styles.typeBadgeText,
-                { color: type === 'exam' ? '#dc2626' : '#2563eb' }
-              ]}>
-                {type === 'exam' ? 'EXAM' : 'ASSIGNMENT'}
+        {/* Hero Assignment Summary Card */}
+        <View style={styles.heroCard}>
+          <View style={styles.heroHeader}>
+            <Text style={styles.heroTitle}>{title}</Text>
+            <Animated.View style={{ transform: [{ scale: statusBadgeAnim }] }}>
+              <View style={[styles.statusBadge, { backgroundColor: statusBadgeStyle.bg }]}>
+                <Text style={[styles.statusBadgeText, { color: statusBadgeStyle.text }]}>
+                  {currentStatus.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
               </Text>
             </View>
+            </Animated.View>
           </View>
           
-          <Text style={styles.heroTitle}>{title}</Text>
-          
-          {/* Countdown */}
-          <View style={[
-            styles.countdownCard,
-            isUrgent && styles.countdownCardUrgent
-          ]}>
-            <LinearGradient
-              colors={isUrgent ? ['#fee2e2', '#fef2f2'] : ['#ecfdf5', '#f0fdf4']}
-              style={styles.countdownGradient}
-            >
-              <View style={styles.countdownContent}>
-                <View style={[
-                  styles.countdownNumber,
-                  { backgroundColor: isUrgent ? '#dc2626' : '#10b981' }
-                ]}>
-                  <Text style={styles.countdownNumberText}>{daysUntil}</Text>
+          {/* Metadata */}
+          <View style={styles.metadataContainer}>
+            <View style={styles.metadataRow}>
+              <Ionicons name={ASSIGNMENT_TYPE_ICONS[type] || 'ellipse'} size={16} color="#6B7280" />
+              <Text style={styles.metadataText}>{ASSIGNMENT_TYPE_LABELS[type] || 'Other'}</Text>
                 </View>
-                <View style={styles.countdownInfo}>
-                  <Text style={styles.countdownLabel}>
-                    {isUrgent ? 'URGENT' : 'DAYS LEFT'}
-                  </Text>
-                  <Text style={[
-                    styles.countdownDate,
-                    { color: isUrgent ? '#991b1b' : '#065f46' }
-                  ]}>
-                    Due {formattedDate}
-                  </Text>
+            {date && (
+              <View style={styles.metadataRow}>
+                <Ionicons name="calendar-outline" size={16} color="#6B7280" />
+                <Text style={styles.metadataText}>{formatDateOnly(date)}</Text>
                 </View>
+            )}
+            {date && (
+              <View style={styles.metadataRow}>
+                <Ionicons name="time-outline" size={16} color="#6B7280" />
+                <Text style={styles.metadataText}>{formatTime(date)}</Text>
               </View>
-            </LinearGradient>
-          </View>
-        </Animated.View>
-
-        {/* Info Cards Grid */}
-        <View style={styles.infoGrid}>
-          <View style={styles.infoCard}>
-            <View style={styles.infoIcon}>
-              <Ionicons name="time-outline" size={20} color="#6B7C32" />
-            </View>
-            <Text style={styles.infoLabel}>Time</Text>
-            <Text style={styles.infoValue}>{time}</Text>
+            )}
           </View>
 
-          {location && (
-            <View style={styles.infoCard}>
-              <View style={styles.infoIcon}>
-                <Ionicons name="location-outline" size={20} color="#6B7C32" />
-              </View>
-              <Text style={styles.infoLabel}>Location</Text>
-              <Text style={styles.infoValue}>{location}</Text>
+          <View style={styles.divider} />
+          </View>
+
+        {/* Description Section */}
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Description</Text>
+          {description ? (
+            <Text style={styles.descriptionText}>{description}</Text>
+          ) : (
+            <View style={styles.emptyDescription}>
+              <Text style={styles.emptyDescriptionText}>No description added.</Text>
             </View>
           )}
-
-          <View style={styles.infoCard}>
-            <View style={styles.infoIcon}>
-              <Ionicons name="checkmark-circle-outline" size={20} color="#6B7C32" />
-            </View>
-            <Text style={styles.infoLabel}>Status</Text>
-            <Text style={styles.infoValue}>Pending</Text>
-          </View>
         </View>
 
-        {/* Section Tabs */}
-        <View style={styles.sectionTabs}>
-          <TouchableOpacity
-            style={[styles.sectionTab, activeSection === 'details' && styles.sectionTabActive]}
-            onPress={() => setActiveSection('details')}
-          >
-            <Text style={[styles.sectionTabText, activeSection === 'details' && styles.sectionTabTextActive]}>
-              Details
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.sectionTab, activeSection === 'attachments' && styles.sectionTabActive]}
-            onPress={() => setActiveSection('attachments')}
-          >
-            <Text style={[styles.sectionTabText, activeSection === 'attachments' && styles.sectionTabTextActive]}>
-              Attachments
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.sectionTab, activeSection === 'submission' && styles.sectionTabActive]}
-            onPress={() => setActiveSection('submission')}
-          >
-            <Text style={[styles.sectionTabText, activeSection === 'submission' && styles.sectionTabTextActive]}>
-              Submission
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {/* Attachments Section - Placeholder for future */}
+        {/* Will be added when attachments are implemented */}
 
-        {/* Section Content */}
-        {activeSection === 'details' && (
-          <View style={styles.sectionContent}>
-            <View style={styles.contentCard}>
-              <Text style={styles.contentTitle}>Description</Text>
-              <Text style={styles.contentText}>
-                {type === 'exam' 
-                  ? 'Comprehensive examination covering all topics discussed during the semester. Make sure to review all lecture materials, assignments, and practice problems. The exam will test your understanding of key concepts and problem-solving abilities.'
-                  : 'Complete this assignment following the guidelines provided in class. Submit your work through the online portal before the deadline. Late submissions will be subject to grade penalties unless prior arrangements have been made.'}
-              </Text>
-            </View>
-
-            <View style={styles.contentCard}>
-              <Text style={styles.contentTitle}>Requirements</Text>
-              <View style={styles.requirementsList}>
-                <View style={styles.requirementItem}>
-                  <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                  <Text style={styles.requirementText}>Review all course materials</Text>
-                </View>
-                <View style={styles.requirementItem}>
-                  <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                  <Text style={styles.requirementText}>Complete practice problems</Text>
-                </View>
-                <View style={styles.requirementItem}>
-                  <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                  <Text style={styles.requirementText}>Prepare necessary documents</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {activeSection === 'attachments' && (
-          <View style={styles.sectionContent}>
-            <TouchableOpacity style={styles.attachmentCard}>
-              <View style={styles.attachmentIcon}>
-                <Ionicons name="document-text" size={24} color="#dc2626" />
-              </View>
-              <View style={styles.attachmentInfo}>
-                <Text style={styles.attachmentName}>Assignment Guidelines.pdf</Text>
-                <Text style={styles.attachmentSize}>2.4 MB • 12 pages</Text>
-              </View>
-              <TouchableOpacity style={styles.downloadButton}>
-                <Ionicons name="download-outline" size={20} color="#6B7C32" />
-              </TouchableOpacity>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.attachmentCard}>
-              <View style={styles.attachmentIcon}>
-                <Ionicons name="document-text" size={24} color="#dc2626" />
-              </View>
-              <View style={styles.attachmentInfo}>
-                <Text style={styles.attachmentName}>Reference Material.pdf</Text>
-                <Text style={styles.attachmentSize}>1.8 MB • 8 pages</Text>
-              </View>
-              <TouchableOpacity style={styles.downloadButton}>
-                <Ionicons name="download-outline" size={20} color="#6B7C32" />
-              </TouchableOpacity>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {activeSection === 'submission' && (
-          <View style={styles.sectionContent}>
-            <TouchableOpacity style={styles.uploadCard}>
-              <LinearGradient
-                colors={['#f0f9ff', '#e0f2fe']}
-                style={styles.uploadGradient}
-              >
-                <View style={styles.uploadIcon}>
-                  <Ionicons name="cloud-upload-outline" size={40} color="#2563eb" />
-                </View>
-                <Text style={styles.uploadTitle}>Upload Your Work</Text>
-                <Text style={styles.uploadSubtitle}>Tap to select files or documents</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <View style={styles.submissionInfo}>
-              <View style={styles.submissionItem}>
-                <Ionicons name="information-circle-outline" size={18} color="#6b7280" />
-                <Text style={styles.submissionText}>Maximum file size: 10 MB</Text>
-              </View>
-              <View style={styles.submissionItem}>
-                <Ionicons name="document-outline" size={18} color="#6b7280" />
-                <Text style={styles.submissionText}>Accepted formats: PDF, DOC, DOCX</Text>
-              </View>
-            </View>
-          </View>
-        )}
-
+        {/* Bottom spacing for action buttons */}
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* Bottom Actions */}
-      <View style={styles.bottomBar}>
-        <TouchableOpacity 
-          style={styles.bottomButtonSecondary}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="notifications-outline" size={18} color="#6B7C32" />
-          <Text style={styles.bottomButtonSecondaryText}>Remind</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.bottomButtonPrimary}
+      {/* Bottom Action Section */}
+      <View style={styles.bottomActions}>
+        {/* Primary Action */}
+          <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={primaryAction.action}
+          disabled={isUpdating}
           activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={['#6B7C32', '#556B2F']}
-            style={styles.bottomButtonGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
           >
-            <Ionicons name="checkmark-circle" size={18} color="#ffffff" />
-            <Text style={styles.bottomButtonPrimaryText}>Mark Complete</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+          {isUpdating ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.primaryButtonText}>{primaryAction.label}</Text>
+          )}
+          </TouchableOpacity>
+          
+        {/* Secondary Actions */}
+        <View style={styles.secondaryActions}>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => {
+              router.push({
+                pathname: '/assignment/create',
+                params: {
+                  assignmentId: id,
+                  classId: classId,
+                },
+              });
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="create-outline" size={16} color="#374151" />
+            <Text style={styles.secondaryButtonText}>Edit</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={handleDelete}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trash-outline" size={16} color="#EF4444" />
+            <Text style={[styles.secondaryButtonText, { color: '#EF4444' }]}>Delete</Text>
+          </TouchableOpacity>
+        </View>
+            </View>
+
+      {/* Toast Notification */}
+      {showToast && (
+        <Animated.View
+          style={[
+            styles.toast,
+            {
+              opacity: toastAnim,
+              transform: [
+                {
+                  translateY: toastAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-50, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -329,359 +397,203 @@ export default function AssignmentDetailScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingHorizontal: 24,
+    paddingTop: Platform.OS === 'ios' ? 60 : 20,
     paddingBottom: 16,
-    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: '#E5E7EB',
   },
   backButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f9fafb',
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    letterSpacing: -0.3,
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#1A1A1A',
   },
-  moreButton: {
+  placeholder: {
     width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f9fafb',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    paddingHorizontal: 24,
+    paddingTop: 24,
   },
   heroCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 24,
-    padding: 24,
-    marginBottom: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#f3f4f6',
+    borderColor: '#E5E7EB',
+    padding: 22,
+    marginBottom: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  heroTop: {
+  heroHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: 16,
-  },
-  typeIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  typeBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  typeBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    gap: 12,
   },
   heroTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 20,
-    letterSpacing: -0.5,
-    lineHeight: 32,
+    flex: 1,
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#1F2937',
+    lineHeight: 30,
   },
-  countdownCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  countdownCardUrgent: {
-    shadowColor: '#dc2626',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  countdownGradient: {
-    padding: 16,
-  },
-  countdownContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  countdownNumber: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    height: 28,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  countdownNumberText: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
-  countdownInfo: {
-    flex: 1,
-  },
-  countdownLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#6b7280',
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  countdownDate: {
-    fontSize: 14,
+  statusBadgeText: {
+    fontSize: 12,
     fontWeight: '600',
+    textTransform: 'capitalize',
   },
-  infoGrid: {
+  metadataContainer: {
+    gap: 8,
+  },
+  metadataRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
-  },
-  infoCard: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#f3f4f6',
     alignItems: 'center',
     gap: 8,
   },
-  infoIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f0fdf4',
+  metadataText: {
+    fontSize: 14,
+    color: '#4B5563',
+    fontWeight: '400',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginTop: 16,
+  },
+  sectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 22,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1A1A1A',
+    marginBottom: 12,
+  },
+  descriptionText: {
+    fontSize: 14,
+    color: '#4B5563',
+    lineHeight: 22,
+  },
+  emptyDescription: {
+    paddingVertical: 16,
+  },
+  emptyDescriptionText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+  },
+  bottomActions: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  primaryButton: {
+    backgroundColor: '#3E6A35',
+    borderRadius: 14,
+    height: 52,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  infoLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#9ca3af',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  infoValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#111827',
-    textAlign: 'center',
-  },
-  sectionTabs: {
-    flexDirection: 'row',
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 20,
-  },
-  sectionTab: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  sectionTabActive: {
-    backgroundColor: '#ffffff',
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  sectionTabText: {
-    fontSize: 14,
+  primaryButtonText: {
+    fontSize: 15,
     fontWeight: '600',
-    color: '#9ca3af',
+    color: '#FFFFFF',
   },
-  sectionTabTextActive: {
-    color: '#111827',
-  },
-  sectionContent: {
-    gap: 16,
-  },
-  contentCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#f3f4f6',
-  },
-  contentTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 12,
-  },
-  contentText: {
-    fontSize: 15,
-    color: '#6b7280',
-    lineHeight: 24,
-  },
-  requirementsList: {
-    gap: 12,
-  },
-  requirementItem: {
+  secondaryActions: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
   },
-  requirementText: {
+  secondaryButton: {
     flex: 1,
-    fontSize: 15,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  attachmentCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#f3f4f6',
-    gap: 12,
-  },
-  attachmentIcon: {
-    width: 48,
-    height: 48,
+    borderColor: '#E5E7EB',
     borderRadius: 12,
-    backgroundColor: '#fef2f2',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  attachmentInfo: {
-    flex: 1,
-  },
-  attachmentName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  attachmentSize: {
-    fontSize: 13,
-    color: '#9ca3af',
-  },
-  downloadButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f0fdf4',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  uploadCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: '#dbeafe',
-    borderStyle: 'dashed',
-  },
-  uploadGradient: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  uploadIcon: {
-    marginBottom: 16,
-  },
-  uploadTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1e40af',
-    marginBottom: 6,
-  },
-  uploadSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  submissionInfo: {
-    gap: 12,
-  },
-  submissionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 8,
-  },
-  submissionText: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  bottomBar: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    paddingBottom: 28,
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-    gap: 10,
-  },
-  bottomButtonSecondary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 14,
-    backgroundColor: '#f0fdf4',
+    height: 38,
+    paddingHorizontal: 14,
     gap: 6,
-    borderWidth: 1,
-    borderColor: '#bbf7d0',
   },
-  bottomButtonSecondaryText: {
+  secondaryButtonText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#6B7C32',
+    fontWeight: '500',
+    color: '#374151',
   },
-  bottomButtonPrimary: {
-    flex: 1,
-    borderRadius: 14,
-    overflow: 'hidden',
-    shadowColor: '#6B7C32',
+  toast: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 100 : 80,
+    left: 24,
+    right: 24,
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 6,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 1000,
   },
-  bottomButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    gap: 8,
-  },
-  bottomButtonPrimaryText: {
+  toastText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#ffffff',
+    fontWeight: '500',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#EF4444',
+    textAlign: 'center',
   },
 });
-

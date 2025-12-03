@@ -1,4 +1,5 @@
 import { useApp } from '@/src/context/AppContext';
+import { useLanguage, getAllLanguages, Language } from '@/src/context/LanguageContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -33,11 +34,13 @@ interface MyProfilePageProps {
 
 const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
   const { user, logout, isAuthenticated, userProfile } = useApp();
+  const { language, setLanguage, t } = useLanguage();
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [editForm, setEditForm] = useState({
     fullName: '',
@@ -59,11 +62,7 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
     };
   }, []);
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.replace('/login');
-    }
-  }, [isAuthenticated, router]);
+  // Removed authentication redirect - handled at route level in profile.tsx
 
   useEffect(() => {
     if (user?.uid) {
@@ -120,6 +119,11 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
       });
       setShowEditModal(true);
     }
+  };
+
+  const handleLanguageSelect = async (lang: Language) => {
+    await setLanguage(lang);
+    setShowLanguageModal(false);
   };
 
   const handleSaveEdit = async () => {
@@ -248,7 +252,7 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Profile</Text>
+        <Text style={styles.title}>{t('profile.title')}</Text>
       </View>
 
       <ScrollView 
@@ -263,6 +267,7 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
             style={styles.avatarContainer}
             onPress={handleImagePicker}
             disabled={isUpdating}
+            activeOpacity={0.8}
           >
             {profilePictureUrl ? (
               <Image
@@ -271,16 +276,21 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
               />
             ) : (
               <View style={styles.avatarPlaceholder}>
-                <Ionicons name="person" size={28} color="#4B5563" />
+                <Ionicons name="person-outline" size={40} color="#9CA3AF" />
               </View>
             )}
-            <View style={styles.cameraButton}>
+            <TouchableOpacity
+              style={styles.cameraButton}
+              onPress={handleImagePicker}
+              disabled={isUpdating}
+              activeOpacity={0.8}
+            >
               {isUpdating ? (
-                <ActivityIndicator size="small" color="#4B5563" />
+                <ActivityIndicator size="small" color="#6B7280" />
               ) : (
-                <Ionicons name="camera" size={12} color="#4B5563" />
+                <Ionicons name="camera-outline" size={14} color="#6B7280" />
               )}
-            </View>
+            </TouchableOpacity>
           </TouchableOpacity>
           
           {/* User Info */}
@@ -290,9 +300,7 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
                 {profile?.fullName || user?.name || 'User'}
               </Text>
               {profile?.schoolVerified && (
-                <View style={styles.verifiedBadge}>
-                  <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                </View>
+                <View style={styles.verifiedDot} />
               )}
             </View>
             
@@ -300,13 +308,9 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
               <Text style={styles.userNickname}>@{profile.nickname}</Text>
             )}
             
-            <Text style={styles.userEmail}>
-              {profile?.email || user?.email || 'user@example.com'}
-            </Text>
-            
             {profile?.university && (
               <View style={styles.universityContainer}>
-                <Ionicons name="school-outline" size={13} color="#6B7280" />
+                <Ionicons name="school-outline" size={14} color="#6B7280" />
                 <Text style={styles.universityText}>{profile.university}</Text>
               </View>
             )}
@@ -316,21 +320,19 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
           <TouchableOpacity
             style={styles.editButton}
             onPress={handleEditPress}
-            activeOpacity={0.8}
+            activeOpacity={0.7}
           >
-            <Ionicons name="create-outline" size={16} color="#4B5563" />
-            <Text style={styles.editButtonText}>Edit Profile</Text>
+            <Ionicons name="create-outline" size={16} color="#0F3F2E" />
+            <Text style={styles.editButtonText}>{t('profile.edit')}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Info Section */}
         <View style={styles.infoSection}>
           <View style={styles.infoItem}>
-            <View style={styles.infoIconContainer}>
-              <Ionicons name="calendar-outline" size={16} color="#6B7280" />
-            </View>
+            <Ionicons name="calendar-outline" size={18} color="#9CA3AF" style={styles.infoIcon} />
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Member Since</Text>
+              <Text style={styles.infoLabel}>{t('profile.memberSince')}</Text>
               <Text style={styles.infoValue}>
                 {formatDate(profile?.createdAt)}
               </Text>
@@ -338,44 +340,54 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
           </View>
           {profile?.schoolEmail && (
             <View style={styles.infoItem}>
-              <View style={styles.infoIconContainer}>
-                <Ionicons name="mail-outline" size={16} color="#6B7280" />
-              </View>
+              <Ionicons name="mail-outline" size={18} color="#9CA3AF" style={styles.infoIcon} />
               <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>School Email</Text>
+                <Text style={styles.infoLabel}>{t('profile.schoolEmail')}</Text>
                 <Text style={styles.infoValue}>{profile.schoolEmail}</Text>
               </View>
             </View>
           )}
           {profile?.studentNumber && (
             <View style={styles.infoItem}>
-              <View style={styles.infoIconContainer}>
-                <Ionicons name="id-card-outline" size={16} color="#6B7280" />
-              </View>
+              <Ionicons name="id-card-outline" size={18} color="#9CA3AF" style={styles.infoIcon} />
               <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>학번</Text>
+                <Text style={styles.infoLabel}>{t('profile.studentNumber')}</Text>
                 <Text style={styles.infoValue}>{profile.studentNumber}</Text>
               </View>
             </View>
           )}
-          <View style={[styles.infoItem, styles.infoItemLast]}>
-            <View style={styles.infoIconContainer}>
-              <Ionicons name="school-outline" size={16} color="#6B7280" />
-            </View>
+          <View style={styles.infoItem}>
+            <Ionicons name="school-outline" size={18} color="#9CA3AF" style={styles.infoIcon} />
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Major</Text>
+              <Text style={styles.infoLabel}>{t('profile.major')}</Text>
               {profile?.major ? (
                 <Text style={styles.infoValue}>{profile.major}</Text>
               ) : (
                 <TouchableOpacity
                   onPress={handleEditPress}
-                  style={styles.addButton}
+                  style={styles.addMajorPill}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="add-circle-outline" size={16} color="#6366F1" />
-                  <Text style={styles.addButtonText}>Add Major</Text>
+                  <Ionicons name="add-outline" size={14} color="#0F3F2E" />
+                  <Text style={styles.addMajorText}>{t('profile.addMajor')}</Text>
                 </TouchableOpacity>
               )}
+            </View>
+          </View>
+          <View style={[styles.infoItem, styles.infoItemLast]}>
+            <Ionicons name="language-outline" size={18} color="#9CA3AF" style={styles.infoIcon} />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>{t('profile.language')}</Text>
+              <TouchableOpacity
+                onPress={() => setShowLanguageModal(true)}
+                style={styles.languageSelector}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.languageValue}>
+                  {getAllLanguages().find(l => l.code === language)?.name || 'English'}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -384,12 +396,60 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
         <TouchableOpacity
           onPress={handleLogout}
           style={styles.signOutButton}
-          activeOpacity={0.8}
+          activeOpacity={0.7}
         >
-          <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-          <Text style={styles.signOutText}>Sign Out</Text>
+          <Ionicons name="log-out-outline" size={18} color="#C64545" />
+          <Text style={styles.signOutText}>{t('profile.signOut')}</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Language Selection Modal */}
+      <Modal
+        visible={showLanguageModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLanguageModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t('profile.chooseLanguage')}</Text>
+              <TouchableOpacity
+                onPress={() => setShowLanguageModal(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScroll}>
+              {getAllLanguages().map((lang) => (
+                <TouchableOpacity
+                  key={lang.code}
+                  style={[
+                    styles.languageOptionRow,
+                    language === lang.code && styles.languageOptionRowSelected,
+                  ]}
+                  onPress={() => handleLanguageSelect(lang.code)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.languageOptionRowText,
+                      language === lang.code && styles.languageOptionRowTextSelected,
+                    ]}
+                  >
+                    {lang.name}
+                  </Text>
+                  {language === lang.code && (
+                    <Ionicons name="checkmark" size={20} color="#0F3F2E" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Edit Profile Modal */}
       <Modal
@@ -401,7 +461,7 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Profile</Text>
+              <Text style={styles.modalTitle}>{t('profile.edit')}</Text>
               <TouchableOpacity
                 onPress={() => setShowEditModal(false)}
                 style={styles.closeButton}
@@ -412,56 +472,56 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
 
             <ScrollView style={styles.modalScroll}>
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Full Name</Text>
+                <Text style={styles.label}>{t('profile.fullName')}</Text>
                 <TextInput
                   style={styles.input}
                   value={editForm.fullName}
                   onChangeText={(text) => setEditForm({ ...editForm, fullName: text })}
-                  placeholder="Enter your full name"
+                  placeholder={t('profile.fullName')}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Nickname</Text>
+                <Text style={styles.label}>{t('profile.nickname')}</Text>
                 <TextInput
                   style={styles.input}
                   value={editForm.nickname}
                   onChangeText={(text) => setEditForm({ ...editForm, nickname: text })}
-                  placeholder="Enter your nickname"
+                  placeholder={t('profile.nickname')}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>University</Text>
+                <Text style={styles.label}>{t('profile.university')}</Text>
                 <TextInput
                   style={styles.input}
                   value={editForm.university}
                   onChangeText={(text) => setEditForm({ ...editForm, university: text })}
-                  placeholder="Enter your university"
+                  placeholder={t('profile.university')}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>학번</Text>
+                <Text style={styles.label}>{t('profile.studentNumber')}</Text>
                 <TextInput
                   style={styles.input}
                   value={editForm.studentNumber}
                   onChangeText={(text) => setEditForm({ ...editForm, studentNumber: text })}
-                  placeholder="Enter your student number"
+                  placeholder={t('profile.studentNumber')}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Major</Text>
+                <Text style={styles.label}>{t('profile.majorLabel')}</Text>
                 <TextInput
                   style={styles.input}
                   value={editForm.major}
                   onChangeText={(text) => setEditForm({ ...editForm, major: text })}
-                  placeholder="Enter your major"
+                  placeholder={t('profile.majorLabel')}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
@@ -472,7 +532,7 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
                 style={styles.cancelButton}
                 onPress={() => setShowEditModal(false)}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>{t('profile.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.saveButton, isUpdating && styles.saveButtonDisabled]}
@@ -482,7 +542,7 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
                 {isUpdating ? (
                   <ActivityIndicator size="small" color="#ffffff" />
                 ) : (
-                  <Text style={styles.saveButtonText}>Save</Text>
+                  <Text style={styles.saveButtonText}>{t('profile.save')}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -514,18 +574,18 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#FFFFFF',
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 48,
+    paddingTop: 56,
     paddingBottom: 20,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 0.5,
     borderBottomColor: '#E5E7EB',
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '600',
     color: '#111827',
     letterSpacing: -0.5,
@@ -545,198 +605,229 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 32,
+    padding: 20,
+    paddingBottom: 40,
   },
   profileCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
+    borderRadius: 20,
+    padding: 32,
+    marginBottom: 20,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 30,
+    elevation: 2,
   },
   avatarContainer: {
     position: 'relative',
-    marginBottom: 16,
+    marginBottom: 24,
   },
   avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 104,
+    height: 104,
+    borderRadius: 52,
     backgroundColor: '#F3F4F6',
+    borderWidth: 1.5,
+    borderColor: '#E7E7E7',
   },
   avatarPlaceholder: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 104,
+    height: 104,
+    borderRadius: 52,
     backgroundColor: '#F9FAFB',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: '#E5E7EB',
+    borderColor: '#E7E7E7',
   },
   cameraButton: {
     position: 'absolute',
     bottom: 0,
     right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
+    borderWidth: 1,
+    borderColor: '#E7E7E7',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
-    shadowRadius: 3,
+    shadowRadius: 4,
     elevation: 2,
   },
   userInfo: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 24,
     width: '100%',
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 4,
+    marginBottom: 8,
   },
   userName: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '600',
     color: '#111827',
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
+  },
+  verifiedDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#0F3F2E',
   },
   userNickname: {
-    fontSize: 15,
-    color: '#6B7280',
-    marginBottom: 6,
-    fontWeight: '500',
-  },
-  userEmail: {
     fontSize: 14,
-    color: '#9CA3AF',
-    marginBottom: 8,
-    fontWeight: '400',
+    fontWeight: '500',
+    color: '#6B7280',
+    marginBottom: 10,
+    letterSpacing: -0.2,
   },
   universityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     marginTop: 2,
   },
   universityText: {
-    fontSize: 13,
-    color: '#6B7280',
+    fontSize: 14,
     fontWeight: '500',
-  },
-  verifiedBadge: {
-    marginLeft: 4,
+    color: '#111827',
+    letterSpacing: -0.2,
   },
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#F9FAFB',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 8,
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E7E7E7',
   },
   editButtonText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '500',
-    color: '#4B5563',
+    color: '#0F3F2E',
     letterSpacing: -0.2,
   },
   infoSection: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 20,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    marginBottom: 36,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 30,
+    elevation: 2,
   },
   infoItem: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#F3F4F6',
+    alignItems: 'flex-start',
+    marginBottom: 24,
   },
   infoItemLast: {
-    borderBottomWidth: 0,
+    marginBottom: 0,
   },
-  infoIconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#F9FAFB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+  infoIcon: {
+    marginRight: 16,
+    marginTop: 2,
   },
   infoContent: {
     flex: 1,
   },
   infoLabel: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    marginBottom: 3,
+    fontSize: 12,
     fontWeight: '500',
-    textTransform: 'uppercase',
+    color: '#8A8A8A',
+    marginBottom: 6,
     letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   infoValue: {
-    fontSize: 15,
-    color: '#111827',
+    fontSize: 16,
     fontWeight: '500',
-    letterSpacing: -0.2,
+    color: '#111827',
+    letterSpacing: -0.3,
   },
-  addButton: {
+  addMajorPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 2,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D9D9D9',
+    alignSelf: 'flex-start',
+    marginTop: 4,
   },
-  addButtonText: {
+  addMajorText: {
     fontSize: 14,
-    color: '#6366F1',
     fontWeight: '500',
+    color: '#0F3F2E',
     letterSpacing: -0.2,
+  },
+  languageSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  languageValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+    letterSpacing: -0.3,
+  },
+  languageOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  languageOptionRowSelected: {
+    backgroundColor: '#F0F9F4',
+  },
+  languageOptionRowText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+    letterSpacing: -0.3,
+  },
+  languageOptionRowTextSelected: {
+    color: '#0F3F2E',
   },
   signOutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    paddingVertical: 14,
+    borderRadius: 14,
+    paddingVertical: 16,
     borderWidth: 1,
-    borderColor: '#FEE2E2',
+    borderColor: '#F1DCDC',
     gap: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
+    height: 50,
   },
   signOutText: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#EF4444',
+    color: '#C64545',
     letterSpacing: -0.2,
   },
   modalOverlay: {

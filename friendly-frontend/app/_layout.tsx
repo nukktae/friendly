@@ -7,6 +7,7 @@ import '../src/polyfills';
 
 import TutorialOverlay from '@/src/components/tutorial/TutorialOverlay';
 import { AppProvider, useApp } from '@/src/context/AppContext';
+import { LanguageProvider } from '@/src/context/LanguageContext';
 import { useColorScheme } from '@/src/hooks/use-color-scheme';
 
 function AppWithOverlay() {
@@ -32,6 +33,7 @@ function AppWithOverlay() {
         <Stack.Screen name="post/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="record" options={{ headerShown: false }} />
         <Stack.Screen name="schedule-review" options={{ headerShown: false }} />
+        <Stack.Screen name="requirements-detail" options={{ headerShown: false }} />
         
         <Stack.Screen name="auth" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
@@ -57,11 +59,13 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   return (
-    <AppProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <AppWithOverlay />
-        <StatusBar style="dark" backgroundColor="#ffffff" />
-      </ThemeProvider>
-    </AppProvider>
+    <LanguageProvider>
+      <AppProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <AppWithOverlay />
+          <StatusBar style="dark" backgroundColor="#ffffff" />
+        </ThemeProvider>
+      </AppProvider>
+    </LanguageProvider>
   );
 }

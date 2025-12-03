@@ -6,6 +6,7 @@ import {
   Alert,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,8 +14,9 @@ import {
   View,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { Lecture } from '@/src/types/lecture.types';
-import { Course } from '@/src/types/gpa.types';
+import { Course, GRADE_POINTS } from '@/src/types/gpa.types';
 import { getLectures, updateLecture, deleteLecture } from '@/src/services/lecture/lectureService';
 import { SemesterSelector } from './SemesterSelector';
 import { EmptySemesterView } from './EmptySemesterView';
@@ -53,6 +55,7 @@ export const SyncClassesSection: React.FC<SyncClassesSectionProps> = ({
   const [showAddSemesterModal, setShowAddSemesterModal] = useState(false);
   const [showAddCourseModal, setShowAddCourseModal] = useState(false);
   const [availableSemesters, setAvailableSemesters] = useState<string[]>([]);
+  const [showGradeDropdown, setShowGradeDropdown] = useState<string | null>(null);
 
   const userId = userProfile?.uid || user?.uid;
 
@@ -322,10 +325,21 @@ export const SyncClassesSection: React.FC<SyncClassesSectionProps> = ({
 
   const handleUploadPhoto = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'image/*'],
-        copyToCacheDirectory: true,
-        multiple: false,
+      // Request permission for photo library
+      const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+      if (!mediaPermission.granted) {
+        const mediaResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!mediaResult.granted) {
+          Alert.alert('Permission Required', 'Photo library access is required to select images.');
+          return;
+        }
+      }
+
+      // Open photo album
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
       });
 
       if (result.canceled || !result.assets || result.assets.length === 0) {
@@ -335,17 +349,17 @@ export const SyncClassesSection: React.FC<SyncClassesSectionProps> = ({
       const file = result.assets[0];
       const formData = new FormData();
       
+      const filename = file.fileName || file.uri.split('/').pop() || 'requirements.jpg';
+      
       if (Platform.OS === 'web') {
         const response = await fetch(file.uri);
         const blob = await response.blob();
-        const filename = file.name || file.uri.split('/').pop() || 'requirements.jpg';
-        const fileType = file.mimeType || (filename.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
         formData.append('files', blob, filename);
       } else {
         formData.append('files', {
           uri: file.uri,
-          name: file.name || file.uri.split('/').pop() || 'requirements.jpg',
-          type: file.mimeType || 'image/jpeg',
+          name: filename,
+          type: 'image/jpeg',
         } as any);
       }
 
@@ -452,29 +466,21 @@ export const SyncClassesSection: React.FC<SyncClassesSectionProps> = ({
                     </View>
                   )}
                 </View>
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    onPress={() => handleEdit(lecture)}
-                    style={styles.actionButton}
-                    disabled={isAdding || isDeleting}
-                  >
-                    <Ionicons name="create-outline" size={16} color="#6B7280" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => {
-                      console.log('[Delete] Delete button pressed for lecture:', lecture.id);
-                      handleDelete(lecture.id);
-                    }}
-                    style={styles.actionButton}
-                    disabled={isAdding || isDeleting || deletingLectureId === lecture.id}
-                  >
-                    {isDeleting && deletingLectureId === lecture.id ? (
-                      <ActivityIndicator size="small" color="#EF4444" />
-                    ) : (
-                      <Ionicons name="trash-outline" size={16} color="#EF4444" />
-                    )}
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log('[Delete] Delete button pressed for lecture:', lecture.id);
+                    handleDelete(lecture.id);
+                  }}
+                  style={styles.deleteButton}
+                  disabled={isAdding || isDeleting || deletingLectureId === lecture.id}
+                  activeOpacity={0.6}
+                >
+                  {isDeleting && deletingLectureId === lecture.id ? (
+                    <ActivityIndicator size="small" color="#9CA3AF" />
+                  ) : (
+                    <Ionicons name="trash-outline" size={20} color="#9CA3AF" />
+                  )}
+                </TouchableOpacity>
               </View>
 
               <View style={styles.inputsRow}>
@@ -493,31 +499,35 @@ export const SyncClassesSection: React.FC<SyncClassesSectionProps> = ({
 
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Grade</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="A"
-                    value={classInput.grade}
-                    onChangeText={(text) => handleGradeChange(lecture.id, text)}
-                    placeholderTextColor="#9CA3AF"
-                    editable={!isAdding && !isDeleting}
-                  />
+                  <TouchableOpacity
+                    style={styles.gradeInput}
+                    onPress={() => setShowGradeDropdown(lecture.id)}
+                    disabled={isAdding || isDeleting}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.gradeInputText, !classInput.grade && styles.gradeInputPlaceholder]}>
+                      {classInput.grade || 'A'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color="#9CA3AF" />
+                  </TouchableOpacity>
                 </View>
-
-                <TouchableOpacity
-                  style={[
-                    styles.addButton,
-                    (!canAdd || isAdding || isDeleting) && styles.addButtonDisabled,
-                  ]}
-                  onPress={() => handleAddToGPA(lecture.id)}
-                  disabled={!canAdd || isAdding || isDeleting}
-                >
-                  {isAdding ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Ionicons name="add" size={18} color="#FFFFFF" />
-                  )}
-                </TouchableOpacity>
               </View>
+
+              {/* Auto-add when both credits and grade are filled */}
+              {canAdd && !isAdding && !isDeleting && (
+                <TouchableOpacity
+                  style={styles.autoAddButton}
+                  onPress={() => handleAddToGPA(lecture.id)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.autoAddButtonText}>Add to GPA</Text>
+                </TouchableOpacity>
+              )}
+              {isAdding && (
+                <View style={styles.autoAddButton}>
+                  <ActivityIndicator size="small" color="#134A35" />
+                </View>
+              )}
             </View>
           );
         })}
@@ -644,6 +654,43 @@ export const SyncClassesSection: React.FC<SyncClassesSectionProps> = ({
         onSave={handleSaveManualCourse}
       />
 
+      {/* Grade Dropdown Modal */}
+      {showGradeDropdown && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowGradeDropdown(null)}
+        >
+          <TouchableOpacity
+            style={styles.dropdownOverlay}
+            activeOpacity={1}
+            onPress={() => setShowGradeDropdown(null)}
+          >
+            <View style={styles.dropdownContainer}>
+              <ScrollView
+                style={styles.dropdownScroll}
+                showsVerticalScrollIndicator={false}
+              >
+                {GRADE_POINTS.map((gp) => (
+                  <TouchableOpacity
+                    key={gp.grade}
+                    style={styles.dropdownItem}
+                    onPress={() => {
+                      handleGradeChange(showGradeDropdown, gp.grade);
+                      setShowGradeDropdown(null);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.dropdownItemText}>{gp.grade}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
       {/* Delete Confirmation Modal */}
       <Modal
         visible={showDeleteConfirm}
@@ -740,88 +787,143 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   classCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.8)',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.04,
     shadowRadius: 12,
-    elevation: 3,
-    backdropFilter: 'blur(10px)',
+    elevation: 2,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: 20,
   },
   classInfo: {
     flex: 1,
-    marginRight: 8,
+    marginRight: 16,
   },
   className: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: '#111827',
+    letterSpacing: -0.3,
     marginBottom: 4,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
-  metaText: {
-    fontSize: 11,
-    color: '#6B7280',
-  },
-  metaDot: {
-    fontSize: 11,
-    color: '#9CA3AF',
-  },
-  actions: {
-    flexDirection: 'row',
     gap: 6,
   },
-  actionButton: {
+  metaText: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: '#6B6B6B',
+    letterSpacing: -0.2,
+  },
+  metaDot: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  deleteButton: {
     padding: 6,
+    borderRadius: 6,
   },
   inputsRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 10,
+    gap: 16,
   },
   inputGroup: {
     flex: 1,
   },
   inputLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 4,
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#8A8A8A',
+    marginBottom: 8,
+    letterSpacing: -0.1,
   },
   input: {
-    backgroundColor: 'rgba(249, 250, 251, 0.8)',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
+    backgroundColor: '#F7F7F7',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    fontWeight: '500',
     color: '#111827',
-    borderWidth: 1,
-    borderColor: 'rgba(229, 231, 235, 0.6)',
+    letterSpacing: -0.2,
+    minHeight: 40,
   },
-  addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#426b1f',
+  gradeInput: {
+    backgroundColor: '#F7F7F7',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  gradeInputText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#111827',
+    letterSpacing: -0.2,
+    flex: 1,
+  },
+  gradeInputPlaceholder: {
+    color: '#9CA3AF',
+  },
+  autoAddButton: {
+    marginTop: 12,
+    backgroundColor: '#134A35',
+    borderRadius: 12,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addButtonDisabled: {
-    backgroundColor: '#D1D5DB',
+  autoAddButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    width: '70%',
+    maxWidth: 200,
+    maxHeight: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  dropdownScroll: {
+    maxHeight: 400,
+  },
+  dropdownItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F1F1',
+  },
+  dropdownItemText: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: '#111827',
+    letterSpacing: -0.2,
   },
   modalOverlay: {
     flex: 1,

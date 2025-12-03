@@ -24,22 +24,10 @@ const getInitials = (name: string): string => {
 };
 
 // Helper function to get background color based on initial
+// Use green tint for premium aesthetic
 const getBackgroundColor = (initial: string): string => {
-  const colors = [
-    '#6366f1', // indigo
-    '#8b5cf6', // purple
-    '#ec4899', // pink
-    '#f43f5e', // rose
-    '#ef4444', // red
-    '#f59e0b', // amber
-    '#10b981', // emerald
-    '#06b6d4', // cyan
-    '#3b82f6', // blue
-    '#14b8a6', // teal
-  ];
-  
-  const index = initial.charCodeAt(0) % colors.length;
-  return colors[index];
+  // Always use green tint background (10% opacity of dark green)
+  return 'rgba(15, 63, 46, 0.1)';
 };
 
 export const AvatarWithInitials: React.FC<AvatarWithInitialsProps> = ({
@@ -113,8 +101,8 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   initials: {
-    color: '#ffffff',
-    fontWeight: '600',
+    color: '#0F3F2E',
+    fontWeight: '500',
     textAlign: 'center',
   },
 });

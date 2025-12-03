@@ -155,7 +155,15 @@ export async function getPDF(fileId: string, userId: string): Promise<PDFFile> {
   }
 
   const data = await response.json();
-  return data.file;
+  const file = data.file;
+  
+  // Replace localhost with API_BASE for mobile devices in downloadUrl if present
+  if (file && file.downloadUrl && file.downloadUrl.includes('localhost')) {
+    const url = new URL(file.downloadUrl);
+    file.downloadUrl = file.downloadUrl.replace(`http://localhost:${url.port}`, API_BASE);
+  }
+  
+  return file;
 }
 
 /**
@@ -170,7 +178,16 @@ export async function getPDFDownloadUrl(fileId: string, userId: string): Promise
   }
 
   const data = await response.json();
-  return data.downloadUrl;
+  let downloadUrl = data.downloadUrl;
+  
+  // Replace localhost with API_BASE for mobile devices
+  // This ensures PDFs work when accessing from mobile via QR code
+  if (downloadUrl && downloadUrl.includes('localhost')) {
+    const url = new URL(downloadUrl);
+    downloadUrl = downloadUrl.replace(`http://localhost:${url.port}`, API_BASE);
+  }
+  
+  return downloadUrl;
 }
 
 /**

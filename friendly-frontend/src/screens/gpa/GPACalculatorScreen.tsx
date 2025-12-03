@@ -1,14 +1,15 @@
 import EmptyState from '@/src/components/common/EmptyState';
 import { AddCourseModal } from '@/src/components/gpa/AddCourseModal';
+import { AddSemesterModal } from '@/src/components/gpa/AddSemesterModal';
 import { CourseList } from '@/src/components/gpa/CourseList';
-import { CreditsRemainingCard } from '@/src/components/gpa/CreditsRemainingCard';
-import { GPACard } from '@/src/components/gpa/GPACard';
 import { SuggestedClassesSection } from '@/src/components/gpa/SuggestedClassesSection';
 import { SyncClassesSection } from '@/src/components/gpa/SyncClassesSection';
 import { GraduationRequirementsUpload } from '@/src/components/gpa/GraduationRequirementsUpload';
+import { SemesterSelector } from '@/src/components/gpa/SemesterSelector';
 import { useApp } from '@/src/context/AppContext';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { getCurrentSemester, isCurrentOrFutureSemester } from '@/src/utils/semesterUtils';
 import {
   Alert,
   Modal,
@@ -21,12 +22,6 @@ import {
   View,
 } from 'react-native';
 import { Course, GPAData, SuggestedClass } from '@/src/types/gpa.types';
-import {
-  calculateGPA,
-  getCompletedCredits,
-  getCreditsRemaining,
-  getProgressPercentage,
-} from '@/src/services/gpa/gpaService';
 import {
   addCourse,
   deleteCourse,
@@ -50,6 +45,8 @@ const GPACalculatorScreen: React.FC = () => {
   const [showCreditsModal, setShowCreditsModal] = useState(false);
   const [creditsInput, setCreditsInput] = useState('');
   const [requirementsAnalysis, setRequirementsAnalysis] = useState<any>(null);
+  const [selectedSemester, setSelectedSemester] = useState<string>(getCurrentSemester());
+  const [showAddSemesterModal, setShowAddSemesterModal] = useState(false);
 
   const userId = userProfile?.uid || user?.uid || 'guest';
 
@@ -66,15 +63,22 @@ const GPACalculatorScreen: React.FC = () => {
   const loadGPAData = async () => {
     try {
       setLoading(true);
+      console.log('[GPACalculatorScreen] loadGPAData called');
       const data = await getGPAData(userId);
       
       if (data) {
+        console.log('[GPACalculatorScreen] GPA data loaded:', {
+          coursesCount: data.courses?.length || 0,
+          courses: data.courses?.map(c => ({ id: c.id, name: c.name, credits: c.credits })) || [],
+          hasAnalysis: !!data.graduationRequirementsAnalysis
+        });
         setGpaData(data);
         // Load graduation requirements analysis if it exists
         if (data.graduationRequirementsAnalysis) {
           setRequirementsAnalysis(data.graduationRequirementsAnalysis);
         }
       } else {
+        console.log('[GPACalculatorScreen] No GPA data, initializing...');
         // Initialize with default values
         setGpaData({
           userId,
@@ -85,7 +89,7 @@ const GPACalculatorScreen: React.FC = () => {
         });
       }
     } catch (error: any) {
-      console.error('Failed to load GPA data:', error);
+      console.error('[GPACalculatorScreen] Failed to load GPA data:', error);
       Alert.alert('Error', 'Failed to load GPA data. Please try again.');
     } finally {
       setLoading(false);
@@ -148,6 +152,29 @@ const GPACalculatorScreen: React.FC = () => {
       await loadGPAData();
       setEditingCourse(null);
     } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update course');
+    }
+  };
+
+  const handleUpdateCourseInline = async (courseId: string, updates: { credits?: number; grade?: string }) => {
+    try {
+      console.log('[GPACalculatorScreen] handleUpdateCourseInline called:', { courseId, updates });
+      const course = courses.find(c => c.id === courseId);
+      if (!course) {
+        console.log('[GPACalculatorScreen] Course not found:', courseId);
+        return;
+      }
+
+      console.log('[GPACalculatorScreen] Updating course:', course.name, 'from', course.credits, 'to', updates.credits);
+      await updateCourse(userId, courseId, {
+        ...course,
+        ...updates,
+      });
+      console.log('[GPACalculatorScreen] Course updated, reloading GPA data...');
+      await loadGPAData();
+      console.log('[GPACalculatorScreen] GPA data reloaded');
+    } catch (error: any) {
+      console.error('[GPACalculatorScreen] Error updating course:', error);
       Alert.alert('Error', error.message || 'Failed to update course');
     }
   };
@@ -232,6 +259,22 @@ const GPACalculatorScreen: React.FC = () => {
     setRefreshing(false);
   };
 
+  // Calculate these values BEFORE any early returns to ensure hooks are always called
+  const courses = gpaData?.courses || [];
+  const totalCredits = courses.reduce((sum, c) => sum + (c.credits || 0), 0);
+  const componentKey = `requirements-${courses.length}-${totalCredits}`;
+  
+  // Get available semesters from courses (must be BEFORE any early returns)
+  const availableSemesters = useMemo(() => {
+    const semesters = new Set<string>();
+    courses.forEach(course => {
+      if (course.semester) {
+        semesters.add(course.semester);
+      }
+    });
+    return Array.from(semesters);
+  }, [courses]);
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -244,13 +287,10 @@ const GPACalculatorScreen: React.FC = () => {
       </View>
     );
   }
-
-  const courses = gpaData?.courses || [];
-  const currentGPA = calculateGPA(courses);
-  const completedCredits = getCompletedCredits(courses);
-  const totalRequired = gpaData?.totalCreditsRequired || DEFAULT_TOTAL_CREDITS;
-  const remainingCredits = getCreditsRemaining(totalRequired, completedCredits);
-  const progressPercentage = getProgressPercentage(completedCredits, totalRequired);
+  
+  console.log('[GPACalculatorScreen] RENDER - courses:', courses.length, 'totalCredits:', totalCredits);
+  console.log('[GPACalculatorScreen] RENDER - componentKey:', componentKey);
+  console.log('[GPACalculatorScreen] RENDER - courses details:', courses.map(c => ({ id: c.id, name: c.name, credits: c.credits })));
 
   return (
     <View style={styles.container}>
@@ -273,6 +313,7 @@ const GPACalculatorScreen: React.FC = () => {
       >
         <View style={styles.scrollContent}>
           <GraduationRequirementsUpload
+            key={componentKey}
             userId={userId}
             completedCourses={courses}
             analysis={requirementsAnalysis}
@@ -312,33 +353,33 @@ const GPACalculatorScreen: React.FC = () => {
             }}
           />
 
-          {courses.length > 0 && (
-            <>
-              <GPACard gpa={currentGPA} totalCredits={completedCredits} />
-
-              <CreditsRemainingCard
-                completedCredits={completedCredits}
-                totalRequired={totalRequired}
-                remainingCredits={remainingCredits}
-                progressPercentage={progressPercentage}
-              />
-            </>
-          )}
-
-          <SyncClassesSection
-            existingCourses={courses}
-            onAddCourse={handleAddCourse}
-          />
-
-          {courses.length > 0 && (
-            <CourseList
-              courses={courses}
-              onEditCourse={handleEditCourse}
-              onDeleteCourse={handleDeleteCourse}
+          {/* Only show SyncClassesSection for current or future semesters */}
+          {isCurrentOrFutureSemester(selectedSemester) && (
+            <SyncClassesSection
+              existingCourses={courses}
+              onAddCourse={handleAddCourse}
             />
           )}
 
           {courses.length > 0 && (
+            <>
+              <SemesterSelector
+                selectedSemester={selectedSemester}
+                onSemesterSelect={setSelectedSemester}
+                onAddNewSemester={() => setShowAddSemesterModal(true)}
+                availableSemesters={availableSemesters}
+              />
+              <CourseList
+                courses={courses}
+                selectedSemester={selectedSemester}
+                onUpdateCourse={handleUpdateCourseInline}
+                onDeleteCourse={handleDeleteCourse}
+              />
+            </>
+          )}
+
+          {/* Only show SuggestedClassesSection for current or future semesters */}
+          {courses.length > 0 && isCurrentOrFutureSemester(selectedSemester) && (
             <SuggestedClassesSection
               suggestions={suggestions}
               loading={loadingSuggestions}
@@ -360,6 +401,16 @@ const GPACalculatorScreen: React.FC = () => {
           setEditingCourse(null);
         }}
         onSave={handleSaveCourse}
+      />
+
+      <AddSemesterModal
+        visible={showAddSemesterModal}
+        existingSemesters={availableSemesters}
+        onClose={() => setShowAddSemesterModal(false)}
+        onSave={(semester) => {
+          setSelectedSemester(semester);
+          setShowAddSemesterModal(false);
+        }}
       />
 
       {/* Credits Modal */}
@@ -414,14 +465,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 48,
+    paddingTop: 56,
     paddingBottom: 20,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 0.5,
     borderBottomColor: '#E5E7EB',
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '600',
     color: '#111827',
     letterSpacing: -0.5,

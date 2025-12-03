@@ -1,12 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HapticTab } from '@/src/components/custom/haptic-tab';
 import { useApp } from '@/src/context/AppContext';
 import tutorialService from '@/src/services/tutorial/tutorialService';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
   const { startTutorial, loadUserProfile, user, isAuthenticated } = useApp();
   const tutorialStartedRef = useRef(false);
 
@@ -63,7 +65,7 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#000000', // Black for active tabs
+        tabBarActiveTintColor: '#426b1f', // Deep green for active tabs
         tabBarInactiveTintColor: '#9ca3af', // gray-400
         headerShown: false,
         tabBarButton: HapticTab,
@@ -71,6 +73,13 @@ export default function TabLayout() {
           backgroundColor: 'white',
           borderTopColor: '#e5e7eb', // gray-200
           borderTopWidth: 1,
+          paddingTop: 8,
+          paddingBottom: Math.max(insets.bottom, 8),
+          height: 60 + Math.max(insets.bottom - 8, 0),
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
         },
       }}>
       <Tabs.Screen

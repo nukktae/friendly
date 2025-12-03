@@ -35,12 +35,15 @@ export const PricingModal: React.FC<PricingModalProps> = ({ visible, onClose }) 
             <View style={styles.modalContent}>
               {/* Header */}
               <View style={styles.header}>
+                <View style={styles.headerIcon}>
+                  <View style={styles.headerDot} />
+                </View>
                 <Text style={styles.headerTitle}>Choose Your Plan</Text>
                 <TouchableOpacity
                   onPress={onClose}
                   style={styles.closeButton}
                 >
-                  <Ionicons name="close" size={24} color="#6B7280" />
+                  <Ionicons name="close" size={20} color="#9CA3AF" />
                 </TouchableOpacity>
               </View>
 
@@ -49,71 +52,75 @@ export const PricingModal: React.FC<PricingModalProps> = ({ visible, onClose }) 
                 showsVerticalScrollIndicator={false}
               >
                 {/* Basic Plan */}
-                <View style={styles.planCard}>
-                  <View style={styles.planHeader}>
-                    <Text style={styles.planName}>Basic</Text>
+                <View style={styles.basicCard}>
+                  <View style={styles.basicHeader}>
+                    <Text style={styles.planName}>BASIC</Text>
                     <View style={styles.freeBadge}>
                       <Text style={styles.freeBadgeText}>Free</Text>
                     </View>
                   </View>
+                  <View style={styles.divider} />
                   <View style={styles.featuresList}>
                     <View style={styles.featureItem}>
-                      <Ionicons name="checkmark-circle" size={18} color="#10b981" />
-                      <Text style={styles.featureText}>Basic GPA tracking</Text>
+                      <Ionicons name="checkmark" size={18} color="#0F3F2E" />
+                      <Text style={styles.featureText}>GPA tracking</Text>
                     </View>
                     <View style={styles.featureItem}>
-                      <Ionicons name="checkmark-circle" size={18} color="#10b981" />
+                      <Ionicons name="checkmark" size={18} color="#0F3F2E" />
                       <Text style={styles.featureText}>Course management</Text>
                     </View>
                     <View style={styles.featureItem}>
-                      <Ionicons name="checkmark-circle" size={18} color="#10b981" />
-                      <Text style={styles.featureText}>Graduation requirements analysis</Text>
+                      <Ionicons name="checkmark" size={18} color="#0F3F2E" />
+                      <Text style={styles.featureText}>Requirement analysis</Text>
                     </View>
                     <View style={styles.featureItem}>
-                      <Ionicons name="checkmark-circle" size={18} color="#10b981" />
+                      <Ionicons name="checkmark" size={18} color="#0F3F2E" />
                       <Text style={styles.featureText}>Credit calculation</Text>
                     </View>
                   </View>
                   <TouchableOpacity
                     style={styles.basicButton}
                     onPress={onClose}
+                    activeOpacity={0.7}
                   >
                     <Text style={styles.basicButtonText}>Continue with Basic</Text>
+                    <Ionicons name="chevron-forward" size={16} color="#0F3F2E" />
                   </TouchableOpacity>
                 </View>
 
                 {/* Premium Plan */}
-                <View style={[styles.planCard, styles.premiumCard]}>
-                  <View style={styles.premiumBadge}>
-                    <Ionicons name="star" size={14} color="#FFFFFF" />
-                    <Text style={styles.premiumBadgeText}>Recommended</Text>
+                <View style={styles.premiumCard}>
+                  <View style={styles.recommendedBadge}>
+                    <Ionicons name="star-outline" size={14} color="#0F3F2E" />
+                    <Text style={styles.recommendedText}>Recommended</Text>
                   </View>
-                  <View style={styles.planHeader}>
-                    <Text style={styles.planName}>Premium</Text>
+                  <View style={styles.premiumHeader}>
+                    <Text style={styles.planName}>PREMIUM</Text>
                     <View style={styles.priceContainer}>
                       <Text style={styles.price}>₩3,000</Text>
                       <Text style={styles.pricePeriod}>/month</Text>
                     </View>
                   </View>
+                  <View style={styles.divider} />
                   <View style={styles.featuresList}>
                     <View style={styles.featureItem}>
-                      <Ionicons name="checkmark-circle" size={18} color="#426b1f" />
+                      <Ionicons name="checkmark" size={18} color="#0F3F2E" />
                       <Text style={styles.featureText}>Everything in Basic</Text>
                     </View>
                     <View style={styles.featureItem}>
-                      <Ionicons name="checkmark-circle" size={18} color="#426b1f" />
-                      <Text style={styles.featureText}>Advanced graduation planning</Text>
+                      <Ionicons name="checkmark" size={18} color="#0F3F2E" />
+                      <Text style={styles.featureText}>Advanced planning</Text>
                     </View>
                     <View style={styles.featureItem}>
-                      <Ionicons name="checkmark-circle" size={18} color="#426b1f" />
-                      <Text style={styles.featureText}>심화전공 / 부전공 / 다전공 calculations</Text>
+                      <Ionicons name="checkmark" size={18} color="#0F3F2E" />
+                      <Text style={styles.featureText}>전공 / 부전공 / 다전공 calculations</Text>
                     </View>
                     <View style={styles.featureItem}>
-                      <Ionicons name="checkmark-circle" size={18} color="#426b1f" />
-                      <Text style={styles.featureText}>AI-powered course suggestions</Text>
+                      <Ionicons name="checkmark" size={18} color="#0F3F2E" />
+                      <Text style={styles.featureText}>AI-powered suggestions</Text>
                     </View>
                     <View style={styles.featureItem}>
-                      <Ionicons name="checkmark-circle" size={18} color="#426b1f" />
+                      <Ionicons name="checkmark" size={18} color="#0F3F2E" />
                       <Text style={styles.featureText}>Priority support</Text>
                     </View>
                   </View>
@@ -124,6 +131,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ visible, onClose }) 
                       console.log('Premium subscription clicked');
                       onClose();
                     }}
+                    activeOpacity={0.9}
                   >
                     <Text style={styles.premiumButtonText}>Upgrade to Premium</Text>
                   </TouchableOpacity>
@@ -140,7 +148,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ visible, onClose }) 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'flex-end',
   },
   modalContainer: {
@@ -148,84 +156,119 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 20,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingTop: 24,
     paddingBottom: 40,
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 32,
     paddingHorizontal: 4,
   },
+  headerIcon: {
+    width: 40,
+    alignItems: 'center',
+  },
+  headerDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#9CA3AF',
+  },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '500',
     color: '#111827',
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
+    flex: 1,
+    textAlign: 'center',
   },
   closeButton: {
+    width: 40,
+    alignItems: 'flex-end',
     padding: 4,
   },
   scrollContent: {
     maxHeight: 600,
   },
-  planCard: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-  },
-  premiumCard: {
+  basicCard: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#426b1f',
-    borderWidth: 2,
-    position: 'relative',
-  },
-  premiumBadge: {
-    position: 'absolute',
-    top: -12,
-    right: 20,
-    backgroundColor: '#426b1f',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
     borderRadius: 20,
+    padding: 24,
+    marginBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E7E7E7',
   },
-  premiumBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  planHeader: {
+  basicHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   planName: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     color: '#111827',
-    letterSpacing: -0.5,
+    letterSpacing: 0.5,
   },
   freeBadge: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: 'rgba(15, 63, 46, 0.1)',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 14,
   },
   freeBadgeText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#426b1f',
+    color: '#0F3F2E',
+    letterSpacing: 0.2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E7E7E7',
+    marginBottom: 20,
+  },
+  premiumCard: {
+    backgroundColor: 'rgba(15, 63, 46, 0.06)',
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 2,
+    borderColor: '#0F3F2E',
+    position: 'relative',
+  },
+  recommendedBadge: {
+    position: 'absolute',
+    top: -12,
+    right: 24,
+    backgroundColor: '#0F3F2E',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  recommendedText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  premiumHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 8,
   },
   priceContainer: {
     flexDirection: 'row',
@@ -233,59 +276,66 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   price: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#426b1f',
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#0F3F2E',
     letterSpacing: -0.5,
   },
   pricePeriod: {
     fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
+    color: '#6A6A6A',
+    fontWeight: '400',
   },
   featuresList: {
-    gap: 12,
+    gap: 14,
     marginBottom: 24,
   },
   featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   featureText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
+    fontSize: 15,
+    color: '#111827',
+    fontWeight: '400',
     flex: 1,
+    letterSpacing: -0.2,
   },
   basicButton: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    paddingVertical: 14,
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 14,
+    borderWidth: 1.5,
+    borderColor: '#0F3F2E',
+    gap: 6,
   },
   basicButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#374151',
+    color: '#0F3F2E',
+    letterSpacing: -0.2,
   },
   premiumButton: {
-    backgroundColor: '#426b1f',
-    borderRadius: 12,
-    paddingVertical: 14,
+    backgroundColor: '#0F3F2E',
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: 'center',
-    shadowColor: '#426b1f',
+    shadowColor: '#0F3F2E',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
     elevation: 4,
+    minHeight: 50,
   },
   premiumButtonText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+    letterSpacing: -0.3,
   },
 });
 

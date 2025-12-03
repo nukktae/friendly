@@ -162,142 +162,148 @@ export default function LectureChatbot({ userId, transcriptionId }: LectureChatb
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <Ionicons name="chatbubbles" size={20} color="#6B7C32" />
-          <Text style={styles.headerTitle}>Lecture Assistant</Text>
+      {/* Chat Card Container */}
+      <View style={styles.chatCard}>
+        {/* Header Row Inside Card */}
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerIcon}>
+              <Ionicons name="chatbubbles" size={16} color="#0F3F2E" />
+            </View>
+            <Text style={styles.headerTitle}>Lecture Assistant</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setShowMenu(!showMenu)}
+            style={styles.menuButton}
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color="#4A4A4A" />
+          </TouchableOpacity>
+          {showMenu && (
+            <View style={styles.menu}>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowMenu(false);
+                  handleClearAll();
+                }}
+                style={styles.menuItem}
+              >
+                <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                <Text style={styles.menuItemText}>Clear All</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
-        <TouchableOpacity
-          onPress={() => setShowMenu(!showMenu)}
-          style={styles.menuButton}
-        >
-          <Ionicons name="ellipsis-vertical" size={20} color="#6b7280" />
-        </TouchableOpacity>
-        {showMenu && (
-          <View style={styles.menu}>
-            <TouchableOpacity
-              onPress={() => {
-                setShowMenu(false);
-                handleClearAll();
-              }}
-              style={styles.menuItem}
-            >
-              <Ionicons name="trash-outline" size={16} color="#dc2626" />
-              <Text style={styles.menuItemText}>Clear All</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
 
-      {/* Messages */}
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.messagesContainer}
-        contentContainerStyle={styles.messagesContent}
-        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-      >
-        {messages.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="chatbubbles-outline" size={40} color="#d1d5db" />
-            <Text style={styles.emptyStateTitle}>Start a conversation</Text>
-          <Text style={styles.emptyStateText}>
-            {transcriptionId 
-              ? 'Ask me anything about this lecture transcript'
-              : 'Ask me anything about your lectures'}
-          </Text>
-          </View>
-        ) : (
-          messages.map((message, index) => (
-            <View
-              key={index}
-              style={[
-                styles.messageRow,
-                message.role === 'user' ? styles.userRow : styles.assistantRow,
-              ]}
-            >
+        {/* Messages */}
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.messagesContainer}
+          contentContainerStyle={styles.messagesContent}
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+          showsVerticalScrollIndicator={false}
+        >
+          {messages.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="chatbubbles-outline" size={40} color="#8A8A8A" style={{ opacity: 0.8 }} />
+              <Text style={styles.emptyStateTitle}>Start a conversation</Text>
+              <Text style={styles.emptyStateText}>
+                {transcriptionId 
+                  ? 'Ask me anything about this lecture transcript'
+                  : 'Ask me anything about your lectures'}
+              </Text>
+            </View>
+          ) : (
+            messages.map((message, index) => (
               <View
+                key={index}
                 style={[
-                  styles.messageBubble,
-                  message.role === 'user' ? styles.userBubble : styles.assistantBubble,
+                  styles.messageRow,
+                  message.role === 'user' ? styles.userRow : styles.assistantRow,
                 ]}
               >
-                <Text
+                <View
                   style={[
-                    styles.messageText,
-                    message.role === 'user' ? styles.userText : styles.assistantText,
+                    styles.messageBubble,
+                    message.role === 'user' ? styles.userBubble : styles.assistantBubble,
                   ]}
                 >
-                  {message.content}
-                </Text>
-                {message.lecturesReferenced && message.lecturesReferenced.length > 0 && (
-                  <View style={styles.referencesContainer}>
-                    <Text style={styles.referencesLabel}>Referenced:</Text>
-                    <View style={styles.referencesList}>
-                      {message.lecturesReferenced.slice(0, 3).map((ref, idx) => (
-                        <View key={idx} style={styles.referenceTag}>
-                          <Text style={styles.referenceText} numberOfLines={1}>
-                            {ref}
+                  <Text
+                    style={[
+                      styles.messageText,
+                      message.role === 'user' ? styles.userText : styles.assistantText,
+                    ]}
+                  >
+                    {message.content}
+                  </Text>
+                  {message.lecturesReferenced && message.lecturesReferenced.length > 0 && (
+                    <View style={styles.referencesContainer}>
+                      <Text style={styles.referencesLabel}>Referenced:</Text>
+                      <View style={styles.referencesList}>
+                        {message.lecturesReferenced.slice(0, 3).map((ref, idx) => (
+                          <View key={idx} style={styles.referenceTag}>
+                            <Text style={styles.referenceText} numberOfLines={1}>
+                              {ref}
+                            </Text>
+                          </View>
+                        ))}
+                        {message.lecturesReferenced.length > 3 && (
+                          <Text style={styles.moreReferences}>
+                            +{message.lecturesReferenced.length - 3} more
                           </Text>
-                        </View>
-                      ))}
-                      {message.lecturesReferenced.length > 3 && (
-                        <Text style={styles.moreReferences}>
-                          +{message.lecturesReferenced.length - 3} more
-                        </Text>
-                      )}
+                        )}
+                      </View>
                     </View>
-                  </View>
-                )}
-                <Text
-                  style={[
-                    styles.messageTime,
-                    message.role === 'user' ? styles.userTime : styles.assistantTime,
-                  ]}
-                >
-                  {formatTime(message.timestamp)}
+                  )}
+                  <Text
+                    style={[
+                      styles.messageTime,
+                      message.role === 'user' ? styles.userTime : styles.assistantTime,
+                    ]}
+                  >
+                    {formatTime(message.timestamp)}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
+
+          {isLoading && (
+            <View style={[styles.messageRow, styles.assistantRow]}>
+              <View style={[styles.messageBubble, styles.assistantBubble]}>
+                <ActivityIndicator size="small" color="#0F3F2E" />
+                <Text style={[styles.messageText, styles.assistantText, styles.messageLoadingText]}>
+                  Thinking...
                 </Text>
               </View>
             </View>
-          ))
-        )}
+          )}
+        </ScrollView>
 
-        {isLoading && (
-          <View style={[styles.messageRow, styles.assistantRow]}>
-            <View style={[styles.messageBubble, styles.assistantBubble]}>
-              <ActivityIndicator size="small" color="#6B7C32" />
-              <Text style={[styles.messageText, styles.assistantText, styles.messageLoadingText]}>
-                Thinking...
-              </Text>
-            </View>
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Input */}
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder={transcriptionId ? "Ask about this transcript..." : "Ask about your lectures..."}
-          placeholderTextColor="#9ca3af"
-          value={inputText}
-          onChangeText={setInputText}
-          multiline
-          maxLength={500}
-          editable={!isLoading}
-          onSubmitEditing={handleSend}
-        />
-        <TouchableOpacity
-          style={[styles.sendButton, (!inputText.trim() || isLoading) && styles.sendButtonDisabled]}
-          onPress={handleSend}
-          disabled={!inputText.trim() || isLoading}
-        >
-          <Ionicons
-            name="send"
-            size={18}
-            color={!inputText.trim() || isLoading ? '#9ca3af' : '#ffffff'}
+        {/* Input */}
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder={transcriptionId ? "Ask about this transcript..." : "Ask about your lectures..."}
+            placeholderTextColor="#8A8A8A"
+            value={inputText}
+            onChangeText={setInputText}
+            multiline
+            maxLength={500}
+            editable={!isLoading}
+            onSubmitEditing={handleSend}
           />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sendButton, (!inputText.trim() || isLoading) && styles.sendButtonDisabled]}
+            onPress={handleSend}
+            disabled={!inputText.trim() || isLoading}
+          >
+            <Ionicons
+              name="arrow-forward"
+              size={18}
+              color={!inputText.trim() || isLoading ? '#8A8A8A' : '#FFFFFF'}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -306,7 +312,7 @@ export default function LectureChatbot({ userId, transcriptionId }: LectureChatb
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FFFFFF',
   },
   loadingContainer: {
     flex: 1,
@@ -318,26 +324,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
   },
+  chatCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+    padding: 20,
+    marginTop: 16,
+    overflow: 'hidden',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-    backgroundColor: '#ffffff',
+    marginBottom: 16,
     position: 'relative',
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+  },
+  headerIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15, 63, 46, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: '#111111',
   },
   menuButton: {
     padding: 4,
@@ -373,27 +393,26 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   messagesContent: {
-    padding: 16,
     paddingBottom: 8,
   },
   emptyState: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 60,
+    paddingVertical: 40,
     paddingHorizontal: 32,
   },
   emptyStateTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginTop: 16,
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#4A4A4A',
+    marginTop: 12,
     marginBottom: 6,
   },
   emptyStateText: {
     fontSize: 14,
-    color: '#6b7280',
+    color: '#8A8A8A',
     textAlign: 'center',
+    maxWidth: '85%',
   },
   messageRow: {
     marginBottom: 12,
@@ -406,29 +425,28 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   messageBubble: {
-    maxWidth: '85%',
-    padding: 12,
+    maxWidth: '78%',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 16,
   },
   userBubble: {
-    backgroundColor: '#6B7C32',
-    borderBottomRightRadius: 4,
+    backgroundColor: '#0F3F2E',
   },
   assistantBubble: {
-    backgroundColor: '#f9fafb',
-    borderBottomLeftRadius: 4,
+    backgroundColor: '#F7F7F7',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: 'rgba(15, 63, 46, 0.18)',
   },
   messageText: {
     fontSize: 15,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   userText: {
-    color: '#ffffff',
+    color: '#FFFFFF',
   },
   assistantText: {
-    color: '#111827',
+    color: '#111111',
   },
   messageLoadingText: {
     marginTop: 8,
@@ -436,14 +454,14 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   messageTime: {
-    fontSize: 11,
-    marginTop: 6,
+    fontSize: 12,
+    marginTop: 4,
   },
   userTime: {
     color: 'rgba(255, 255, 255, 0.7)',
   },
   assistantTime: {
-    color: '#9ca3af',
+    color: '#8A8A8A',
   },
   referencesContainer: {
     marginTop: 8,
@@ -481,34 +499,32 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     flexDirection: 'row',
-    padding: 12,
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-    alignItems: 'flex-end',
-    gap: 8,
+    alignItems: 'center',
+    backgroundColor: '#F7F7F7',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(15, 63, 46, 0.18)',
+    marginTop: 16,
+    gap: 12,
   },
   input: {
     flex: 1,
-    backgroundColor: '#f9fafb',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     fontSize: 15,
-    color: '#111827',
+    color: '#111111',
     maxHeight: 100,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    padding: 0,
   },
   sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#6B7C32',
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#0F3F2E',
     justifyContent: 'center',
     alignItems: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#E5E5E5',
   },
 });

@@ -2,7 +2,7 @@ const router = require('express').Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { getLectureById, getAllUserLectures, listClassFiles, createPDFFile, getPDFFileById, createAssignment, getAssignmentById, updateAssignment, deleteAssignment, listClassAssignments, listUserAssignments } = require('../services/firestoreService');
+const { getLectureById, getAllUserLectures, listClassFiles, createPDFFile, getPDFFileById, createAssignment, getAssignmentById, updateAssignment, deleteAssignment, listClassAssignments, listUserAssignments, createExam, getExamById, updateExam, deleteExam, listClassExams } = require('../services/firestoreService');
 const { uploadPDF } = require('../services/pdfStorageService');
 const { extractTextFromPDF, getPDFPageCount } = require('../services/pdfService');
 
@@ -631,6 +631,55 @@ router.post('/:classId/assignments', async (req, res) => {
 });
 
 /**
+ * GET /api/classes/:classId/assignments/:assignmentId
+ * Get a single assignment by ID
+ * Query params: userId (required)
+ */
+router.get('/:classId/assignments/:assignmentId', async (req, res) => {
+  try {
+    const { classId, assignmentId } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    const assignment = await getAssignmentById(assignmentId, userId);
+
+    // Verify assignment belongs to the class
+    if (assignment.classId !== classId) {
+      return res.status(404).json({ error: 'Assignment not found for this class' });
+    }
+
+    res.json({
+      success: true,
+      assignment: {
+        id: assignment.id,
+        classId: assignment.classId,
+        title: assignment.title,
+        description: assignment.description || '',
+        type: assignment.type || 'other',
+        dueDate: assignment.dueDate 
+          ? (typeof assignment.dueDate === 'string' 
+            ? assignment.dueDate 
+            : new Date(assignment.dueDate._seconds * 1000).toISOString())
+          : null,
+        status: assignment.status || 'not_started',
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching assignment:', error);
+    if (error.message === 'Assignment not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes('Unauthorized')) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message || 'Failed to fetch assignment' });
+  }
+});
+
+/**
  * PATCH /api/classes/:classId/assignments/:assignmentId
  * Update an assignment
  * Body: { userId, title?, description?, type?, dueDate?, status? }
@@ -747,6 +796,284 @@ router.get('/:classId/notes', async (req, res) => {
   } catch (error) {
     console.error('Error fetching class notes:', error);
     res.status(500).json({ error: error.message || 'Failed to fetch class notes' });
+  }
+});
+
+// ============================================
+// EXAM ROUTES
+// ============================================
+
+/**
+ * GET /api/classes/:classId/exams
+ * Get all exams for a class
+ * Query params: userId (required)
+ */
+router.get('/:classId/exams', async (req, res) => {
+  try {
+    const { classId } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.json({
+        success: true,
+        data: [],
+        count: 0,
+      });
+    }
+
+    const exams = await listClassExams(classId, userId);
+    
+    const formattedExams = exams.map(exam => ({
+      id: exam.id,
+      title: exam.title,
+      description: exam.description || '',
+      date: exam.date 
+        ? (typeof exam.date === 'string' 
+          ? exam.date 
+          : new Date(exam.date._seconds * 1000).toISOString())
+        : null,
+      durationMinutes: exam.durationMinutes || 60,
+      location: exam.location || null,
+      instructions: exam.instructions || null,
+      status: exam.status || 'upcoming',
+      createdAt: exam.createdAt 
+        ? (typeof exam.createdAt === 'string' 
+          ? exam.createdAt 
+          : new Date(exam.createdAt._seconds * 1000).toISOString())
+        : null,
+      updatedAt: exam.updatedAt 
+        ? (typeof exam.updatedAt === 'string' 
+          ? exam.updatedAt 
+          : new Date(exam.updatedAt._seconds * 1000).toISOString())
+        : null,
+    }));
+
+    res.json({
+      success: true,
+      data: formattedExams,
+      count: formattedExams.length,
+    });
+  } catch (error) {
+    console.error('Error fetching class exams:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch class exams' });
+  }
+});
+
+/**
+ * GET /api/classes/:classId/exams/:examId
+ * Get a single exam by ID
+ * Query params: userId (required)
+ */
+router.get('/:classId/exams/:examId', async (req, res) => {
+  try {
+    const { classId, examId } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    const exam = await getExamById(examId, userId);
+
+    // Verify exam belongs to the class
+    if (exam.classId !== classId) {
+      return res.status(404).json({ error: 'Exam not found for this class' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: exam.id,
+        classId: exam.classId,
+        title: exam.title,
+        description: exam.description || '',
+        date: exam.date 
+          ? (typeof exam.date === 'string' 
+            ? exam.date 
+            : new Date(exam.date._seconds * 1000).toISOString())
+          : null,
+        durationMinutes: exam.durationMinutes || 60,
+        location: exam.location || null,
+        instructions: exam.instructions || null,
+        status: exam.status || 'upcoming',
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching exam:', error);
+    if (error.message === 'Exam not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes('Unauthorized')) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message || 'Failed to fetch exam' });
+  }
+});
+
+/**
+ * POST /api/classes/:classId/exams
+ * Create a new exam for a class
+ * Body: { userId, title, description?, date, durationMinutes?, location?, instructions? }
+ */
+router.post('/:classId/exams', async (req, res) => {
+  try {
+    const { classId } = req.params;
+    const { userId, title, description, date, durationMinutes, location, instructions } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: 'title is required' });
+    }
+
+    if (!date) {
+      return res.status(400).json({ error: 'date is required' });
+    }
+
+    // Verify class exists
+    try {
+      await getLectureById(classId, userId);
+    } catch (error) {
+      return res.status(404).json({ error: 'Class not found' });
+    }
+
+    const examId = await createExam({
+      userId,
+      classId,
+      title: title.trim(),
+      description: description || '',
+      date: date,
+      durationMinutes: durationMinutes || 60,
+      location: location || null,
+      instructions: instructions || null,
+    });
+
+    const exam = await getExamById(examId, userId);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: exam.id,
+        title: exam.title,
+        description: exam.description,
+        date: exam.date 
+          ? (typeof exam.date === 'string' 
+            ? exam.date 
+            : new Date(exam.date._seconds * 1000).toISOString())
+          : null,
+        durationMinutes: exam.durationMinutes || 60,
+        location: exam.location || null,
+        instructions: exam.instructions || null,
+        status: exam.status || 'upcoming',
+      },
+      message: 'Exam created successfully',
+    });
+  } catch (error) {
+    console.error('Error creating exam:', error);
+    res.status(500).json({ error: error.message || 'Failed to create exam' });
+  }
+});
+
+/**
+ * PATCH /api/classes/:classId/exams/:examId
+ * Update an exam
+ * Body: { userId, title?, description?, date?, durationMinutes?, location?, instructions?, status? }
+ */
+router.patch('/:classId/exams/:examId', async (req, res) => {
+  try {
+    const { classId, examId } = req.params;
+    const { userId, title, description, date, durationMinutes, location, instructions, status } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    const updates = {};
+    if (title !== undefined) updates.title = title.trim();
+    if (description !== undefined) updates.description = description;
+    if (date !== undefined) updates.date = date;
+    if (durationMinutes !== undefined) updates.durationMinutes = durationMinutes;
+    if (location !== undefined) updates.location = location || null;
+    if (instructions !== undefined) updates.instructions = instructions || null;
+    if (status !== undefined) {
+      // Validate status
+      const validStatuses = ['upcoming', 'completed', 'missed', 'in_progress'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ 
+          error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` 
+        });
+      }
+      updates.status = status;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'At least one field to update is required' });
+    }
+
+    await updateExam(examId, userId, updates);
+    const exam = await getExamById(examId, userId);
+
+    res.json({
+      success: true,
+      data: {
+        id: exam.id,
+        title: exam.title,
+        description: exam.description,
+        date: exam.date 
+          ? (typeof exam.date === 'string' 
+            ? exam.date 
+            : new Date(exam.date._seconds * 1000).toISOString())
+          : null,
+        durationMinutes: exam.durationMinutes || 60,
+        location: exam.location || null,
+        instructions: exam.instructions || null,
+        status: exam.status || 'upcoming',
+      },
+      message: 'Exam updated successfully',
+    });
+  } catch (error) {
+    console.error('Error updating exam:', error);
+    if (error.message === 'Exam not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes('Unauthorized')) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message || 'Failed to update exam' });
+  }
+});
+
+/**
+ * DELETE /api/classes/:classId/exams/:examId
+ * Delete an exam
+ * Query params: userId (required)
+ */
+router.delete('/:classId/exams/:examId', async (req, res) => {
+  try {
+    const { classId, examId } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    await deleteExam(examId, userId);
+
+    res.json({
+      success: true,
+      message: 'Exam deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error deleting exam:', error);
+    if (error.message === 'Exam not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes('Unauthorized')) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message || 'Failed to delete exam' });
   }
 });
 

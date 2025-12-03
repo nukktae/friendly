@@ -150,37 +150,21 @@ const SchedulePage: React.FC<SchedulePageProps> = () => {
   };
 
   const handleImageSelected = async (imageUri: string) => {
-    try {
-      setIsAnalyzing(true);
-      setAnalysisProgress('Uploading image...');
-      const userId = userProfile?.uid || user?.uid;
-      if (!userId) {
-        Alert.alert('Error', 'User ID not found. Please sign in again.');
-        return;
-      }
-      
-      // Update progress messages
-      setTimeout(() => setAnalysisProgress('Analyzing schedule...'), 500);
-      
-      const result = await aiService.analyzeScheduleImage(imageUri, userId);
-      
-      setAnalysisProgress('Processing results...');
-      
-      // Navigate to schedule review screen with the analyzed items and scheduleId
-      router.push({
-        pathname: '/schedule-review',
-        params: {
-          items: JSON.stringify(result.items),
-          scheduleId: result.scheduleId,
-        },
-      });
-    } catch (error) {
-      console.error('Failed to analyze image:', error);
-      Alert.alert('Error', 'Failed to analyze your schedule image. Please try again.');
-    } finally {
-      setIsAnalyzing(false);
-      setAnalysisProgress('');
+    const userId = userProfile?.uid || user?.uid;
+    if (!userId) {
+      Alert.alert('Error', 'User ID not found. Please sign in again.');
+      return;
     }
+    
+    // Navigate immediately to schedule review screen with loading state
+    router.push({
+      pathname: '/schedule-review',
+      params: {
+        isLoading: 'true',
+        imageUri: imageUri,
+        userId: userId,
+      },
+    });
   };
 
   const handleGoogleCalendarImport = async () => {
