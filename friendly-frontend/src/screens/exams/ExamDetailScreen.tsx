@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Platform,
   ScrollView,
   StatusBar,
@@ -10,49 +11,92 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useApp } from '@/src/context/AppContext';
+import { getExamById } from '@/src/services/classes/classResourcesService';
+import { ClassExam } from '@/src/types';
 
 interface ExamDetailScreenProps {
   id: string;
-  title: string;
-  date: string;
-  description?: string;
-  durationMinutes?: number;
-  location?: string;
-  instructions?: string;
-  status?: 'upcoming' | 'completed' | 'missed' | 'in_progress';
-  classId?: string;
-  onBack: () => void;
-  error?: string;
+  classId: string;
 }
 
 export default function ExamDetailScreen({
   id,
-  title,
-  date,
-  description,
-  durationMinutes,
-  location,
-  instructions,
-  status = 'upcoming',
   classId,
-  onBack,
-  error,
 }: ExamDetailScreenProps) {
   const router = useRouter();
+  const { user } = useApp();
+  const [exam, setExam] = useState<ClassExam | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (error) {
+  const handleBack = () => {
+    try {
+      if (router.canGoBack && router.canGoBack()) {
+        router.back();
+      } else {
+        router.push('/(tabs)/explore');
+      }
+    } catch (error) {
+      router.push('/(tabs)/explore');
+    }
+  };
+
+  useEffect(() => {
+    loadExam();
+  }, [id, classId, user?.uid]);
+
+  const loadExam = async () => {
+    if (!id || !classId || !user?.uid) {
+      setError('Missing required parameters');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      const data = await getExamById(id, classId, user.uid);
+      setExam(data);
+    } catch (err: any) {
+      console.error('Error loading exam:', err);
+      setError(err.message || 'Failed to load exam');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isLoading) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="dark-content" />
         <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color="#1A1A1A" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Exam</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#0F3F2E" />
+        </View>
+      </View>
+    );
+  }
+
+  if (error || !exam) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={22} color="#1A1A1A" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Exam</Text>
           <View style={styles.placeholder} />
         </View>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>{error || 'Exam not found'}</Text>
         </View>
       </View>
     );
@@ -74,7 +118,7 @@ export default function ExamDetailScreen({
     completed: { bg: '#F7F7F7', text: '#4A4A4A' },
     missed: { bg: 'rgba(0,0,0,0.04)', text: '#8A8A8A' },
     in_progress: { bg: 'rgba(15,63,46,0.08)', text: '#0F3F2E' },
-  }[status] || statusBadgeStyle.upcoming;
+  }[exam.status || 'upcoming'] || { bg: 'rgba(15,63,46,0.08)', text: '#0F3F2E' };
 
   return (
     <View style={styles.container}>
@@ -82,7 +126,7 @@ export default function ExamDetailScreen({
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color="#1A1A1A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Exam</Text>
@@ -97,10 +141,10 @@ export default function ExamDetailScreen({
         {/* Hero Card */}
         <View style={styles.heroCard}>
           <View style={styles.heroHeader}>
-            <Text style={styles.heroTitle}>{title}</Text>
+            <Text style={styles.heroTitle}>{exam.title}</Text>
             <View style={[styles.statusBadge, { backgroundColor: statusBadgeStyle.bg }]}>
               <Text style={[styles.statusBadgeText, { color: statusBadgeStyle.text }]}>
-                {status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                {(exam.status || 'upcoming').replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
               </Text>
             </View>
           </View>
@@ -109,18 +153,18 @@ export default function ExamDetailScreen({
           <View style={styles.metadataContainer}>
             <View style={styles.metadataRow}>
               <Ionicons name="calendar-outline" size={16} color="#6A6A6A" />
-              <Text style={styles.metadataText}>{formatDate(date)}</Text>
+              <Text style={styles.metadataText}>{formatDate(exam.date)}</Text>
             </View>
-            {durationMinutes && (
+            {exam.durationMinutes && (
               <View style={styles.metadataRow}>
                 <Ionicons name="time-outline" size={16} color="#6A6A6A" />
-                <Text style={styles.metadataText}>{durationMinutes} minutes</Text>
+                <Text style={styles.metadataText}>{exam.durationMinutes} minutes</Text>
               </View>
             )}
-            {location && (
+            {exam.location && (
               <View style={styles.metadataRow}>
                 <Ionicons name="location-outline" size={16} color="#6A6A6A" />
-                <Text style={styles.metadataText}>{location}</Text>
+                <Text style={styles.metadataText}>{exam.location}</Text>
               </View>
             )}
           </View>
@@ -129,18 +173,18 @@ export default function ExamDetailScreen({
         </View>
 
         {/* Description Section */}
-        {description && (
+        {exam.description && (
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Description</Text>
-            <Text style={styles.descriptionText}>{description}</Text>
+            <Text style={styles.descriptionText}>{exam.description}</Text>
           </View>
         )}
 
         {/* Instructions Section */}
-        {instructions && (
+        {exam.instructions && (
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Instructions</Text>
-            <Text style={styles.descriptionText}>{instructions}</Text>
+            <Text style={styles.descriptionText}>{exam.instructions}</Text>
           </View>
         )}
 

@@ -1,5 +1,5 @@
-import { ENV } from '../../config/env';
-import { Platform } from 'react-native';
+import { ENV } from '@/src/config/env';
+import { isWeb } from '@/src/lib/platform';
 
 const BASE_URL = ENV.API_BASE || 'http://localhost:4000';
 
@@ -128,7 +128,7 @@ export async function createPost(data: CreatePostData): Promise<{ success: boole
     }
 
     // Handle web vs native platforms
-    if (Platform.OS === 'web') {
+    if (isWeb()) {
       try {
         const response = await fetch(data.imageUri);
         const blob = await response.blob();
@@ -270,7 +270,7 @@ export async function updatePost(
     }
 
     // Handle web vs native platforms
-    if (Platform.OS === 'web') {
+    if (isWeb()) {
       try {
         const response = await fetch(data.imageUri);
         const blob = await response.blob();

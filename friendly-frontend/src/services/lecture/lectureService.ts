@@ -1,4 +1,4 @@
-import { ENV } from '../../config/env';
+import { ENV } from '@/src/config/env';
 import { Lecture, ActionItem } from '../../types/lecture.types';
 
 const API_BASE = ENV.API_BASE || 'http://localhost:4000';

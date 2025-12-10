@@ -20,7 +20,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useAudioRecorder, RecordingPresets } from 'expo-audio';
 import { chatWithLectures, getChatHistory, deleteAllChatHistory, deleteChat } from '../../services/lecture/lectureService';
 import { ChatMessage } from '../../types/lecture.types';
-import { ENV } from '../../config/env';
+import { ENV } from '@/src/config/env';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 

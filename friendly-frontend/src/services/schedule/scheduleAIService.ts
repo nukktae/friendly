@@ -1,5 +1,5 @@
-import { ENV } from '../../config/env';
-import { Platform } from 'react-native';
+import { ENV } from '@/src/config/env';
+import { isWeb } from '@/src/lib/platform';
 
 export interface ScheduleItem {
   id: string;
@@ -62,7 +62,7 @@ export class ScheduleAIService {
       }
 
       // Handle web vs native platforms differently
-      if (Platform.OS === 'web') {
+      if (isWeb()) {
         // Web platform - use File API
         try {
           const response = await fetch(imageUri);
@@ -396,14 +396,141 @@ export class ScheduleAIService {
     };
   }
 
+  /**
+   * Check if two schedule items have overlapping time slots
+   */
   private hasTimeConflict(item1: ScheduleItem, item2: ScheduleItem): boolean {
-    // Simple time conflict detection
-    // In a real implementation, this would parse time strings properly
-    const time1 = item1.startTime || item1.time.split(' - ')[0];
-    const time2 = item2.startTime || item2.time.split(' - ')[0];
+    // If either item has no time, no conflict
+    if (!item1.time && !item1.startTime) return false;
+    if (!item2.time && !item2.startTime) return false;
+
+    // Parse time ranges for both items
+    const range1 = this.parseTimeRange(item1);
+    const range2 = this.parseTimeRange(item2);
+
+    // If either range couldn't be parsed, skip conflict check
+    if (!range1 || !range2) return false;
+
+    // Check for overlap: two ranges overlap if one starts before the other ends
+    // and the other starts before the first ends
+    const overlap = range1.start < range2.end && range2.start < range1.end;
     
-    // Mock conflict detection - items with same start time conflict
-    return time1 === time2;
+    return overlap;
+  }
+
+  /**
+   * Parse a time string or use startTime/endTime to get a time range in minutes since midnight
+   * Returns { start: number, end: number } or null if parsing fails
+   */
+  private parseTimeRange(item: ScheduleItem): { start: number; end: number } | null {
+    // If we have explicit startTime and endTime, use those
+    if (item.startTime && item.endTime) {
+      const start = this.timeStringToMinutes(item.startTime);
+      const end = this.timeStringToMinutes(item.endTime);
+      if (start !== null && end !== null && start < end) {
+        return { start, end };
+      }
+    }
+
+    // Otherwise, parse from time string (e.g., "10:00 AM - 12:00 PM")
+    if (!item.time) return null;
+
+    const timeStr = item.time.trim();
+    
+    // Try different formats
+    // Format 1: "10:00 AM - 12:00 PM" or "10:00 AM-12:00 PM"
+    const rangeMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)\s*[-–—]\s*(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (rangeMatch) {
+      const start = this.parseTimeToMinutes(parseInt(rangeMatch[1], 10), parseInt(rangeMatch[2], 10), rangeMatch[3].toUpperCase());
+      const end = this.parseTimeToMinutes(parseInt(rangeMatch[4], 10), parseInt(rangeMatch[5], 10), rangeMatch[6].toUpperCase());
+      if (start !== null && end !== null && start < end) {
+        return { start, end };
+      }
+    }
+
+    // Format 2: "10:00-12:00" (24-hour format)
+    const range24Match = timeStr.match(/(\d{1,2}):(\d{2})\s*[-–—]\s*(\d{1,2}):(\d{2})/);
+    if (range24Match) {
+      const startHours = parseInt(range24Match[1], 10);
+      const startMinutes = parseInt(range24Match[2], 10);
+      const endHours = parseInt(range24Match[3], 10);
+      const endMinutes = parseInt(range24Match[4], 10);
+      
+      if (startHours >= 0 && startHours < 24 && endHours >= 0 && endHours < 24 &&
+          startMinutes >= 0 && startMinutes < 60 && endMinutes >= 0 && endMinutes < 60) {
+        const start = startHours * 60 + startMinutes;
+        const end = endHours * 60 + endMinutes;
+        if (start < end) {
+          return { start, end };
+        }
+      }
+    }
+
+    // Format 3: Single time "10:00 AM" - assume 1 hour duration
+    const singleMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (singleMatch) {
+      const start = this.parseTimeToMinutes(parseInt(singleMatch[1], 10), parseInt(singleMatch[2], 10), singleMatch[3].toUpperCase());
+      if (start !== null) {
+        // Default to 1 hour duration
+        const end = start + 60;
+        return { start, end };
+      }
+    }
+
+    // Format 4: Single 24-hour time "10:00" - assume 1 hour duration
+    const single24Match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+    if (single24Match) {
+      const hours = parseInt(single24Match[1], 10);
+      const minutes = parseInt(single24Match[2], 10);
+      if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
+        const start = hours * 60 + minutes;
+        const end = start + 60; // Default 1 hour
+        return { start, end };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Convert time string (HH:MM format) to minutes since midnight
+   */
+  private timeStringToMinutes(timeStr: string): number | null {
+    const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+    if (match) {
+      const hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+      if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
+        return hours * 60 + minutes;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Parse hours, minutes, and AM/PM to minutes since midnight
+   */
+  private parseTimeToMinutes(hours: number, minutes: number, period: string): number | null {
+    if (hours < 1 || hours > 12 || minutes < 0 || minutes >= 60) {
+      return null;
+    }
+
+    let totalMinutes = 0;
+
+    if (period === 'PM' && hours !== 12) {
+      totalMinutes = (hours + 12) * 60 + minutes;
+    } else if (period === 'AM' && hours === 12) {
+      totalMinutes = minutes; // 12:00 AM = midnight
+    } else {
+      totalMinutes = hours * 60 + minutes;
+    }
+
+    // Ensure result is within valid range (0-1439 minutes = 0:00-23:59)
+    if (totalMinutes >= 0 && totalMinutes < 1440) {
+      return totalMinutes;
+    }
+
+    return null;
   }
 }
 

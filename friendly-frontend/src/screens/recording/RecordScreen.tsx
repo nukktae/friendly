@@ -29,7 +29,7 @@ import {
   getLectureTranscripts,
 } from '../../services/lecture/lectureService';
 import { Lecture, ActionItem } from '../../types/lecture.types';
-import LectureChatbot from '../../components/lecture/LectureChatbot';
+import LectureChatbot from '@/src/components/modules/lecture/LectureChatbot';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -65,131 +65,61 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
   const webChunkBlobsRef = useRef<Blob[]>([]); // Store chunks for live transcription
   const lastChunkUploadTimeRef = useRef<number>(0);
   
-  // Mock transcript data - 3 minute biology lecture
-  const mockTranscript = 'Hello everyone, welcome to today\'s biology class. Today we\'ll be learning about cell structure and function. Cells are the basic unit of all living organisms. Cells are broadly divided into prokaryotic and eukaryotic cells. Prokaryotic cells don\'t have a nuclear membrane, while eukaryotic cells have a nuclear membrane that clearly separates the nucleus. Let\'s explore the differences between plant and animal cells. Plant cells have a cell wall and chloroplasts. Chloroplasts are important organelles responsible for photosynthesis. Animal cells don\'t have a cell wall but have centrioles instead. Mitochondria can be thought of as the powerhouses of the cell, producing energy. Ribosomes are responsible for protein synthesis, and the endoplasmic reticulum is involved in the transport and synthesis of proteins and lipids. The Golgi apparatus packages and secretes proteins. The cell membrane has selective permeability, allowing only necessary substances to pass through. To summarize today\'s key points, cells are the basic unit of life, and each organelle performs unique functions. Next time, we\'ll learn about cell division in detail. And for today\'s homework, please read and summarize page 20 of the textbook. Page 20 contains detailed explanations about cell structure, so make sure to read it carefully. If you have any questions, feel free to ask anytime.';
-  
-  // Mock data
-  const MOCK_TRANSCRIPTION_ID = 'mock_transcript_' + Date.now();
-  const MOCK_LECTURE_ID = 'mock_lecture_' + Date.now();
-  
-  const mockSummary = {
-    title: 'Cell Structure and Function',
-    keyPoints: [
-      'Cells are the basic unit of all living organisms',
-      'Prokaryotic cells lack a nuclear membrane, while eukaryotic cells have one',
-      'Plant cells have cell walls and chloroplasts; animal cells have centrioles',
-      'Mitochondria produce energy, ribosomes synthesize proteins',
-      'The cell membrane has selective permeability',
-    ],
-  };
-  
-  const mockActionItems: ActionItem[] = [
-    {
-      id: 'mock_item_1',
-      text: 'Read and summarize page 20 of the textbook',
-      checked: false,
-    },
-    {
-      id: 'mock_item_2',
-      text: 'Review cell organelles and their functions',
-      checked: false,
-    },
-    {
-      id: 'mock_item_3',
-      text: 'Complete practice questions on cell structure',
-      checked: false,
-    },
-  ];
-  
-  const mockLecture: Lecture = {
-    id: MOCK_LECTURE_ID,
-    userId: user?.uid || '',
-    title: 'Biology Lecture - Cell Structure',
-    transcript: mockTranscript,
-    transcriptionId: MOCK_TRANSCRIPTION_ID,
-    summary: {
-      title: mockSummary.title,
-      keyPoints: mockSummary.keyPoints,
-      actionItems: mockActionItems,
-    },
-    createdAt: new Date().toISOString(),
-    duration: recordingTime,
-    status: 'completed',
-  };
-
   // Lecture data
   const [lecture, setLecture] = useState<Lecture | null>(null);
-  const [actionItems, setActionItems] = useState<ActionItem[]>(mockActionItems);
+  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [newItemText, setNewItemText] = useState('');
   
-  // Mock transcripts data
-  const mockTranscripts = [
-    {
-      transcriptionId: 'mock_1',
-      transcript: 'Welcome to today\'s lecture on linear algebra. We\'ll be covering matrix operations, vector spaces, and eigenvalues. Today we\'ll start with basic matrix operations and then move on to more advanced topics.',
-      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
-      isCurrent: false,
-      isLive: false,
-    },
-    {
-      transcriptionId: 'mock_2',
-      transcript: 'In this session, we discussed the fundamentals of calculus, including limits, derivatives, and integrals. We explored how these concepts apply to real-world problems and practiced solving various examples together.',
-      createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
-      isCurrent: false,
-      isLive: false,
-    },
-  ];
-
-  // Transcripts list - using mock data
+  // Transcripts list
   const [transcripts, setTranscripts] = useState<Array<{
     transcriptionId: string | null;
     transcript: string;
     createdAt: string | { _seconds: number; _nanoseconds: number } | { seconds: number; nanoseconds: number } | Date;
     isCurrent: boolean;
     isLive?: boolean;
-  }>>(mockTranscripts);
+  }>>([]);
   const [isLoadingTranscripts, setIsLoadingTranscripts] = useState(false);
-  const transcriptsLoadedRef = useRef(true); // Set to true since we're using mock data
+  const transcriptsLoadedRef = useRef(false);
   
   // Debug log for state changes
   useEffect(() => {
     console.log('[RecordScreen] State update - isRecording:', isRecording, 'lectureId:', lectureId, 'transcripts.length:', transcripts.length, 'isLoadingTranscripts:', isLoadingTranscripts);
   }, [isRecording, lectureId, transcripts.length, isLoadingTranscripts]);
   
-  // Mock data - no need to create from lecture data
-  // useEffect(() => {
-  //   if (lecture && transcriptsLoadedRef.current && transcripts.length === 0) {
-  //     console.log('[RecordScreen] No transcripts from API, creating from lecture data');
-  //     const newTranscripts = [];
-  //     
-  //     if (lecture.transcript) {
-  //       newTranscripts.push({
-  //         transcriptionId: lecture.transcriptionId || null,
-  //         transcript: lecture.transcript,
-  //         createdAt: lecture.createdAt,
-  //         isCurrent: true,
-  //       });
-  //     }
-  //     
-  //     // Add liveTranscript if it's different from main transcript
-  //     if (lecture.liveTranscript && lecture.liveTranscript !== lecture.transcript) {
-  //       newTranscripts.push({
-  //         transcriptionId: null,
-  //         transcript: lecture.liveTranscript,
-  //         createdAt: lecture.createdAt,
-  //         isCurrent: false,
-  //         isLive: true,
-  //       });
-  //     }
-  //     
-  //     if (newTranscripts.length > 0) {
-  //       console.log('[RecordScreen] Setting transcripts from lecture data:', newTranscripts);
-  //       setTranscripts(newTranscripts);
-  //     }
-  //   }
-  // }, [lecture, transcripts.length]);
+  // Create transcripts from lecture data if API doesn't return any
+  useEffect(() => {
+    if (lecture && transcriptsLoadedRef.current && transcripts.length === 0) {
+      console.log('[RecordScreen] No transcripts from API, creating from lecture data');
+      const newTranscripts = [];
+      
+      if (lecture.transcript) {
+        newTranscripts.push({
+          transcriptionId: lecture.transcriptionId || null,
+          transcript: lecture.transcript,
+          createdAt: lecture.createdAt,
+          isCurrent: true,
+        });
+      }
+      
+      // Add liveTranscript if it's different from main transcript
+      if (lecture.liveTranscript && lecture.liveTranscript !== lecture.transcript) {
+        newTranscripts.push({
+          transcriptionId: null,
+          transcript: lecture.liveTranscript,
+          createdAt: lecture.createdAt,
+          isCurrent: false,
+          isLive: true,
+        });
+      }
+      
+      if (newTranscripts.length > 0) {
+        console.log('[RecordScreen] Setting transcripts from lecture data:', newTranscripts);
+        setTranscripts(newTranscripts);
+      }
+    }
+  }, [lecture, transcripts.length]);
   
   // Language selection
   const [selectedLanguage, setSelectedLanguage] = useState<'en' | 'ko' | 'auto'>('auto');
@@ -230,27 +160,27 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
     }
   }, [propLectureId]);
   
-  // Mock data - no API calls
-  // useEffect(() => {
-  //   console.log('[RecordScreen] useEffect - lectureId:', lectureId, 'user?.uid:', user?.uid);
-  //   if (lectureId && user?.uid) {
-  //     console.log('[RecordScreen] Loading lecture and transcripts...');
-  //     loadLecture();
-  //     loadTranscripts();
-  //   } else {
-  //     console.log('[RecordScreen] Skipping load - missing lectureId or user.uid');
-  //     console.log('[RecordScreen] Current state - lectureId:', lectureId, 'propLectureId:', propLectureId, 'user?.uid:', user?.uid);
-  //   }
-  // }, [lectureId, user?.uid]);
+  // Load lecture data when lectureId is available
+  useEffect(() => {
+    console.log('[RecordScreen] useEffect - lectureId:', lectureId, 'user?.uid:', user?.uid);
+    if (lectureId && user?.uid) {
+      console.log('[RecordScreen] Loading lecture and transcripts...');
+      loadLecture();
+      loadTranscripts();
+    } else {
+      console.log('[RecordScreen] Skipping load - missing lectureId or user.uid');
+      console.log('[RecordScreen] Current state - lectureId:', lectureId, 'propLectureId:', propLectureId, 'user?.uid:', user?.uid);
+    }
+  }, [lectureId, user?.uid]);
   
-  // Mock data - no reload needed
-  // useEffect(() => {
-  //   console.log('[RecordScreen] Recording state changed - isRecording:', isRecording, 'lectureId:', lectureId);
-  //   if (!isRecording && lectureId && user?.uid) {
-  //     console.log('[RecordScreen] Reloading transcripts after recording stopped...');
-  //     loadTranscripts();
-  //   }
-  // }, [isRecording, lectureId, user?.uid]);
+  // Reload transcripts after recording stops
+  useEffect(() => {
+    console.log('[RecordScreen] Recording state changed - isRecording:', isRecording, 'lectureId:', lectureId);
+    if (!isRecording && lectureId && user?.uid) {
+      console.log('[RecordScreen] Reloading transcripts after recording stopped...');
+      loadTranscripts();
+    }
+  }, [isRecording, lectureId, user?.uid]);
 
   const loadLecture = async () => {
     if (!lectureId || !user?.uid) return;
@@ -289,25 +219,9 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
       console.log('[RecordScreen] API response:', JSON.stringify(data, null, 2));
       const loadedTranscripts = data.transcripts || [];
       
-      // Filter out mock/test data
-      const mockPatterns = [
-        'So this is the famous spacecraft Voyager',
-        'famous spacecraft Voyager',
-        'spacecraft Voyager',
-      ];
-      
-      const filteredTranscripts = loadedTranscripts.filter((transcript) => {
-        const transcriptText = transcript.transcript || '';
-        // Exclude transcripts that contain known mock text patterns
-        return !mockPatterns.some(pattern => 
-          transcriptText.toLowerCase().includes(pattern.toLowerCase())
-        );
-      });
-      
       console.log('[RecordScreen] Loaded transcripts count:', loadedTranscripts.length);
-      console.log('[RecordScreen] Filtered transcripts count:', filteredTranscripts.length);
-      console.log('[RecordScreen] Transcripts data:', filteredTranscripts);
-      setTranscripts(filteredTranscripts);
+      console.log('[RecordScreen] Transcripts data:', loadedTranscripts);
+      setTranscripts(loadedTranscripts);
       transcriptsLoadedRef.current = true;
       console.log('[RecordScreen] Transcripts state updated');
     } catch (error) {
@@ -555,124 +469,321 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
   };
 
   const startRecording = async () => {
-    console.log('startRecording called - MOCK MODE');
+    console.log('[RecordScreen] startRecording called');
     
-    // Mock recording - no API calls
-    setIsRecording(true);
-    isRecordingRef.current = true;
-    isPausedRef.current = false;
-    setShowSummary(false);
-    setRecordingTime(0);
-    setLiveTranscript('');
-    
-    // Simulate live transcript appearing gradually
-    const words = mockTranscript.split(' ');
-    let currentText = '';
-    
-    // Show transcript word by word with delay
-    words.forEach((word, index) => {
-      setTimeout(() => {
-        if (isRecordingRef.current && !isPausedRef.current) {
-          currentText += (index > 0 ? ' ' : '') + word;
-          setLiveTranscript(currentText);
-        }
-      }, (index + 1) * 800); // 800ms delay between words
-    });
-    
-    // Start timer
-    const timer = setInterval(() => {
-      if (isRecordingRef.current && !isPausedRef.current) {
-        setRecordingTime((prev) => prev + 1);
+    try {
+      // Request microphone permission
+      const hasPermission = await requestMicrophonePermission();
+      if (!hasPermission) {
+        Alert.alert('Permission Required', 'Microphone access is required to record lectures.');
+        return;
       }
-    }, 1000);
-    
-    // Store timer reference for cleanup
-    (chunkUploadInterval as any).mockTimer = timer;
-    
-    console.log('Mock recording started');
+
+      // Create lecture if we don't have one
+      let currentLectureId = lectureId;
+      if (!currentLectureId) {
+        console.log('[RecordScreen] Creating new lecture...');
+        const newLecture = await createLecture(user?.uid || '', {
+          title: `Lecture ${new Date().toLocaleDateString()}`,
+        });
+        currentLectureId = newLecture.lectureId;
+        setLectureId(currentLectureId);
+        setLecture(newLecture.lecture);
+      }
+
+      // Start transcription session
+      await startTranscribing(currentLectureId, user?.uid || '');
+
+      // Start recording
+      setIsRecording(true);
+      isRecordingRef.current = true;
+      isPausedRef.current = false;
+      setShowSummary(false);
+      setRecordingTime(0);
+      setLiveTranscript('');
+
+      // Start audio recording
+      if (Platform.OS === 'web') {
+        // Web platform - use MediaRecorder
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          webStreamRef.current = stream;
+          webAudioChunksRef.current = [];
+          webChunkBlobsRef.current = [];
+          
+          const mediaRecorder = new MediaRecorder(stream, {
+            mimeType: 'audio/webm;codecs=opus'
+          });
+          webMediaRecorderRef.current = mediaRecorder;
+          
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              webAudioChunksRef.current.push(event.data);
+              webChunkBlobsRef.current.push(event.data);
+            }
+          };
+          
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(webAudioChunksRef.current, { type: 'audio/webm' });
+            const blobUrl = URL.createObjectURL(audioBlob);
+            recordingUriRef.current = blobUrl;
+          };
+          
+          mediaRecorder.start(1000); // Collect data every second
+        } catch (error: any) {
+          console.error('Error starting web MediaRecorder:', error);
+          setIsRecording(false);
+          Alert.alert('Error', 'Failed to start recording');
+          return;
+        }
+      } else {
+        // Native platform - use expo-audio
+        try {
+          await audioRecorder.prepareToRecordAsync();
+          await audioRecorder.record();
+        } catch (error: any) {
+          console.error('Error starting native recording:', error);
+          setIsRecording(false);
+          Alert.alert('Error', 'Failed to start recording');
+          return;
+        }
+      }
+
+      // Start recording timer
+      const timer = setInterval(() => {
+        if (isRecordingRef.current && !isPausedRef.current) {
+          setRecordingTime((prev) => prev + 1);
+        }
+      }, 1000);
+      
+      chunkUploadInterval.current = timer;
+
+      // Start uploading chunks periodically (every 15 seconds)
+      const chunkTimer = setInterval(async () => {
+        if (isRecordingRef.current && !isPausedRef.current && currentLectureId) {
+          await uploadChunk();
+        }
+      }, 15000); // Upload chunk every 15 seconds
+      
+      (chunkUploadInterval as any).chunkTimer = chunkTimer;
+      
+      console.log('[RecordScreen] Recording started successfully');
+    } catch (error: any) {
+      console.error('[RecordScreen] Error starting recording:', error);
+      Alert.alert('Error', error.message || 'Failed to start recording');
+      setIsRecording(false);
+      isRecordingRef.current = false;
+    }
   };
 
   const pauseRecording = async () => {
-    console.log('pauseRecording called - MOCK MODE');
-    // Mock pause/resume - just toggle state
+    console.log('[RecordScreen] pauseRecording called');
+    
+    if (Platform.OS === 'web') {
+      // Web platform - pause MediaRecorder
+      if (webMediaRecorderRef.current && isRecording) {
+        if (isPaused) {
+          webMediaRecorderRef.current.resume();
+        } else {
+          webMediaRecorderRef.current.pause();
+        }
+      }
+    } else {
+      // Native platform - expo-audio doesn't support pause/resume
+      // Just toggle the state for UI purposes
+      // Note: Recording will continue, but UI will show as paused
+      console.warn('[RecordScreen] Pause/resume not fully supported on native platform');
+    }
+    
     setIsPaused(!isPaused);
     isPausedRef.current = !isPaused;
   };
 
   const stopRecording = async () => {
-    console.log('stopRecording called - MOCK MODE');
+    console.log('[RecordScreen] stopRecording called');
     
-    // Mock stop recording - no API calls
+    if (!lectureId || !user?.uid) {
+      Alert.alert('Error', 'Lecture ID or user ID is missing');
+      return;
+    }
+
     setIsProcessing(true);
     
-    // Stop mock timer
-    if ((chunkUploadInterval as any).mockTimer) {
-      clearInterval((chunkUploadInterval as any).mockTimer);
-      (chunkUploadInterval as any).mockTimer = null;
+    // Stop timers
+    if (chunkUploadInterval.current) {
+      clearInterval(chunkUploadInterval.current);
+      chunkUploadInterval.current = null;
+    }
+    if ((chunkUploadInterval as any).chunkTimer) {
+      clearInterval((chunkUploadInterval as any).chunkTimer);
+      (chunkUploadInterval as any).chunkTimer = null;
     }
     
     // Stop recording state
     isRecordingRef.current = false;
     isPausedRef.current = false;
     
-    // Set mock transcription ID and lecture data
-    setTranscriptionId(MOCK_TRANSCRIPTION_ID);
-    setLectureId(MOCK_LECTURE_ID);
-    setLecture({
-      ...mockLecture,
-      duration: recordingTime,
-    });
-    setActionItems(mockActionItems);
-    
-    // Simulate processing delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    setIsRecording(false);
-    setIsPaused(false);
-    setIsProcessing(false);
-    setShowSummary(true); // Show summary screen after stopping
-    
-    console.log('Mock recording stopped');
+    let audioUri: string | null = null;
+
+    try {
+      // Stop audio recording and get URI
+      if (Platform.OS === 'web') {
+        // Web platform - stop MediaRecorder and create blob
+        if (webMediaRecorderRef.current) {
+          webMediaRecorderRef.current.stop();
+          webMediaRecorderRef.current = null;
+        }
+        
+        // Stop all tracks
+        if (webStreamRef.current) {
+          webStreamRef.current.getTracks().forEach(track => track.stop());
+          webStreamRef.current = null;
+        }
+        
+        // Create final audio blob
+        if (webAudioChunksRef.current.length > 0) {
+          const audioBlob = new Blob(webAudioChunksRef.current, { type: 'audio/webm' });
+          const blobUrl = URL.createObjectURL(audioBlob);
+          audioUri = blobUrl;
+        }
+      } else {
+        // Native platform - stop expo-audio recorder
+        await audioRecorder.stop();
+        // Wait a bit for the URI to be available
+        await new Promise(resolve => setTimeout(resolve, 300));
+        // Access URI from recorder after stopping
+        audioUri = (audioRecorder as any).uri || null;
+      }
+
+      if (!audioUri) {
+        throw new Error('No audio recording available');
+      }
+
+      // Transcribe the audio
+      console.log('[RecordScreen] Transcribing audio...');
+      const transcriptionResult = await transcribeLecture(
+        lectureId,
+        audioUri,
+        user.uid,
+        recordingTime,
+        selectedLanguage
+      );
+
+      // Clean up blob URL if it was created
+      if (audioUri.startsWith('blob:')) {
+        URL.revokeObjectURL(audioUri);
+      }
+
+      // Update state with transcription results
+      setTranscriptionId(transcriptionResult.transcriptionId);
+      
+      // Reload lecture to get updated data
+      await loadLecture();
+      
+      // Generate summary and checklist
+      try {
+        console.log('[RecordScreen] Generating summary...');
+        const summary = await generateSummary(transcriptionResult.transcriptionId);
+        setActionItems(summary.actionItems || []);
+        
+        // Reload lecture again to get summary
+        await loadLecture();
+      } catch (summaryError: any) {
+        console.error('[RecordScreen] Error generating summary:', summaryError);
+        // Don't fail the whole process if summary generation fails
+      }
+
+      setIsRecording(false);
+      setIsPaused(false);
+      setIsProcessing(false);
+      setShowSummary(true); // Show summary screen after stopping
+      
+      console.log('[RecordScreen] Recording stopped and transcribed successfully');
+    } catch (error: any) {
+      console.error('[RecordScreen] Error stopping recording:', error);
+      Alert.alert('Error', error.message || 'Failed to process recording');
+      setIsProcessing(false);
+      setIsRecording(false);
+      setIsPaused(false);
+    }
   };
 
   const toggleCheckbox = async (id: string) => {
-    // Mock mode - update local state only
-    setActionItems(prevItems =>
-      prevItems.map(item => 
-        item.id === id ? { ...item, checked: !item.checked } : item
-      )
-    );
+    if (!transcriptionId) {
+      Alert.alert('Error', 'Transcription ID is missing');
+      return;
+    }
+
+    try {
+      const updatedItem = await toggleChecklistItem(transcriptionId, id);
+      // Update local state
+      setActionItems(prevItems =>
+        prevItems.map(item => 
+          item.id === id ? updatedItem : item
+        )
+      );
+    } catch (error: any) {
+      console.error('[RecordScreen] Error toggling checkbox:', error);
+      Alert.alert('Error', error.message || 'Failed to update checklist item');
+    }
   };
 
   const addChecklistItem = async () => {
     if (!newItemText.trim()) return;
+    
+    if (!transcriptionId) {
+      Alert.alert('Error', 'Transcription ID is missing');
+      return;
+    }
 
-    // Mock mode - add to local state only
-    const newItem: ActionItem = {
-      id: `mock_item_${Date.now()}`,
-      text: newItemText.trim(),
-      checked: false,
-    };
-    setActionItems(prevItems => [...prevItems, newItem]);
-    setNewItemText('');
+    try {
+      const updatedItems = await updateChecklist(transcriptionId, {
+        add: { text: newItemText.trim() },
+      });
+      setActionItems(updatedItems);
+      setNewItemText('');
+    } catch (error: any) {
+      console.error('[RecordScreen] Error adding checklist item:', error);
+      Alert.alert('Error', error.message || 'Failed to add checklist item');
+    }
   };
 
   const editChecklistItem = async (id: string) => {
     if (!editText.trim()) return;
+    
+    if (!transcriptionId) {
+      Alert.alert('Error', 'Transcription ID is missing');
+      return;
+    }
 
-    // Mock mode - update local state only
-    setActionItems(prevItems =>
-      prevItems.map(item => 
-        item.id === id ? { ...item, text: editText.trim() } : item
-      )
-    );
-    setEditingItem(null);
-    setEditText('');
+    try {
+      const updatedItems = await updateChecklist(transcriptionId, {
+        edit: { id, text: editText.trim() },
+      });
+      setActionItems(updatedItems);
+      setEditingItem(null);
+      setEditText('');
+    } catch (error: any) {
+      console.error('[RecordScreen] Error editing checklist item:', error);
+      Alert.alert('Error', error.message || 'Failed to update checklist item');
+    }
   };
 
   const deleteChecklistItem = async (id: string) => {
-    // Mock mode - remove from local state only
-    setActionItems(prevItems => prevItems.filter(item => item.id !== id));
+    if (!transcriptionId) {
+      Alert.alert('Error', 'Transcription ID is missing');
+      return;
+    }
+
+    try {
+      const updatedItems = await updateChecklist(transcriptionId, {
+        delete: { id },
+      });
+      setActionItems(updatedItems);
+    } catch (error: any) {
+      console.error('[RecordScreen] Error deleting checklist item:', error);
+      Alert.alert('Error', error.message || 'Failed to delete checklist item');
+    }
   };
 
   const saveRecording = async () => {
@@ -986,7 +1097,7 @@ export default function RecordScreen({ lectureId: propLectureId, onBack, onSave 
             <View style={styles.tabContent}>
               <View style={styles.transcriptCardSummary}>
                 <Text style={styles.transcriptTextSummary}>
-                  {lecture?.transcript || liveTranscript || mockTranscript}
+                  {lecture?.transcript || liveTranscript}
                 </Text>
               </View>
             </View>

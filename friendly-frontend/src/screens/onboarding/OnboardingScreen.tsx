@@ -13,17 +13,86 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  Alert
 } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useApp } from '@/src/context/AppContext';
+import { FirestoreService } from '@/src/services/firestore/firestoreService';
+import OnboardingCompleteScreen from './OnboardingCompleteScreen';
 
-interface OnboardingScreenProps {
-  onComplete: (data: OnboardingData) => void;
-  onBack?: () => void;
-}
+interface OnboardingScreenProps {}
 
 const { width } = Dimensions.get('window');
 
-const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete, onBack }) => {
+const OnboardingScreen: React.FC<OnboardingScreenProps> = () => {
+  const router = useRouter();
+  const { user, setIsOnboardingComplete } = useApp();
+  const [isComplete, setIsComplete] = useState(false);
+  const [userName, setUserName] = useState('');
+  
+  const handleBack = () => {
+    router.replace('/auth/login' as any);
+  };
+  
+  const handleComplete = async (data: OnboardingData) => {
+    if (!user?.email || !user?.uid) {
+      Alert.alert('Error', 'User information not found');
+      return;
+    }
+
+    try {
+      // Try to create user profile in Firestore
+      try {
+        await FirestoreService.createUserProfile(user.uid, user.email, data);
+        console.log('User profile created successfully');
+      } catch (profileError: any) {
+        // Handle network errors gracefully - allow onboarding to complete even if backend is unavailable
+        if (profileError?.message?.includes('Network request failed') || profileError?.message?.includes('Failed to fetch')) {
+          console.log('Backend server not reachable. Onboarding will complete locally. Profile can be synced later when backend is available.');
+          // Continue with onboarding completion even if backend is unavailable
+        } else {
+          // Re-throw other errors (validation, etc.)
+          throw profileError;
+        }
+      }
+      
+      // Set completion state
+      setUserName(data.fullName);
+      setIsComplete(true);
+      
+      // Update global onboarding completion state
+      setIsOnboardingComplete(true);
+      
+      console.log('Onboarding completed successfully');
+    } catch (error: any) {
+      console.error('Error completing onboarding:', error);
+      // Only show error alert for non-network errors
+      if (!error?.message?.includes('Network request failed') && !error?.message?.includes('Failed to fetch')) {
+        Alert.alert('Error', error.message || 'Failed to complete onboarding. Please try again.');
+      } else {
+        // For network errors, still complete onboarding locally
+        setUserName(data.fullName);
+        setIsComplete(true);
+        setIsOnboardingComplete(true);
+        console.log('Onboarding completed locally (backend unavailable)');
+      }
+    }
+  };
+  
+  const handleGetStarted = () => {
+    console.log('Get Started button clicked - navigating to classes screen');
+    router.replace('/(tabs)/explore');
+  };
+  
+  if (isComplete) {
+    return (
+      <OnboardingCompleteScreen
+        userName={userName}
+        onGetStarted={handleGetStarted}
+      />
+    );
+  }
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<OnboardingData>({
     fullName: '',
@@ -247,17 +316,17 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete, onBack 
       });
     } else {
       // Complete onboarding
-      onComplete(formData);
+      handleComplete(formData);
     }
   };
 
-  const handleBack = () => {
+  const handleBackPress = () => {
     if (currentStep > 0) {
       animateTransition(() => {
         setCurrentStep(currentStep - 1);
       });
-    } else if (onBack) {
-      onBack();
+    } else {
+      handleBack();
     }
   };
 
@@ -267,7 +336,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete, onBack 
         setCurrentStep(currentStep + 1);
       });
     } else {
-      onComplete(formData);
+      handleComplete(formData);
     }
   };
 
@@ -413,7 +482,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete, onBack 
             
             {/* Back Button */}
             {currentStep > 0 && (
-              <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+              <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
                 <Ionicons name="arrow-back" size={24} color="#666" />
               </TouchableOpacity>
             )}

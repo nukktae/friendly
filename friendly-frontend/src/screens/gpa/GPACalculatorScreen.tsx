@@ -1,15 +1,15 @@
 import EmptyState from '@/src/components/common/EmptyState';
-import { AddCourseModal } from '@/src/components/gpa/AddCourseModal';
-import { AddSemesterModal } from '@/src/components/gpa/AddSemesterModal';
-import { CourseList } from '@/src/components/gpa/CourseList';
-import { SuggestedClassesSection } from '@/src/components/gpa/SuggestedClassesSection';
-import { SyncClassesSection } from '@/src/components/gpa/SyncClassesSection';
-import { GraduationRequirementsUpload } from '@/src/components/gpa/GraduationRequirementsUpload';
-import { SemesterSelector } from '@/src/components/gpa/SemesterSelector';
+import { AddCourseModal } from '@/src/components/modules/gpa/AddCourseModal';
+import { AddSemesterModal } from '@/src/components/modules/gpa/AddSemesterModal';
+import { CourseList } from '@/src/components/modules/gpa/CourseList';
+import { SuggestedClassesSection } from '@/src/components/modules/gpa/SuggestedClassesSection';
+import { SyncClassesSection } from '@/src/components/modules/gpa/SyncClassesSection';
+import { GraduationRequirementsUpload } from '@/src/components/modules/gpa/GraduationRequirementsUpload';
+import { SemesterSelector } from '@/src/components/modules/gpa/SemesterSelector';
 import { useApp } from '@/src/context/AppContext';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState, useMemo } from 'react';
-import { getCurrentSemester, isCurrentOrFutureSemester } from '@/src/utils/semesterUtils';
+import { getCurrentSemester, isCurrentOrFutureSemester } from '@/src/utils/semester';
 import {
   Alert,
   Modal,
@@ -328,8 +328,9 @@ const GPACalculatorScreen: React.FC = () => {
               
               if (analysis) {
                 // Save analysis to backend along with total credits
-                const updatedGpaData = {
-                  ...gpaData,
+                const updatedGpaData: GPAData = {
+                  ...gpaData!,
+                  userId: userId, // Ensure userId is always a string
                   graduationRequirementsAnalysis: analysis,
                   totalCreditsRequired: analysis.totalCreditsRequired || gpaData?.totalCreditsRequired || DEFAULT_TOTAL_CREDITS,
                 };

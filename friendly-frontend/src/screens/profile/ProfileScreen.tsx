@@ -28,14 +28,23 @@ import {
 } from '@/src/services/profile/profileService';
 import { ENV } from '@/src/config/env';
 
-interface MyProfilePageProps {
-  onBack: () => void;
-}
+interface MyProfilePageProps {}
 
-const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
+const MyProfilePage: React.FC<MyProfilePageProps> = () => {
   const { user, logout, isAuthenticated, userProfile } = useApp();
   const { language, setLanguage, t } = useLanguage();
   const router = useRouter();
+  
+  // Handle authentication redirect
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.replace('/auth/login' as any);
+    }
+  }, [isAuthenticated, router]);
+  
+  const handleBack = () => {
+    router.push('/');
+  };
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -212,7 +221,7 @@ const MyProfilePage: React.FC<MyProfilePageProps> = ({ onBack }) => {
       timeoutRef.current = setTimeout(() => {
         if (isMounted) {
           setShowLogoutConfirm(false);
-          router.replace('/login');
+          router.replace('/auth/login' as any);
         }
       }, 1500);
     } catch (error) {

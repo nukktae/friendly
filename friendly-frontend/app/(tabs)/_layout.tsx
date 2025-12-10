@@ -3,7 +3,7 @@ import { Tabs } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { HapticTab } from '@/src/components/custom/haptic-tab';
+import { HapticTab } from '@/src/components/ui/haptic-tab';
 import { useApp } from '@/src/context/AppContext';
 import tutorialService from '@/src/services/tutorial/tutorialService';
 
@@ -34,32 +34,50 @@ export default function TabLayout() {
   // Start dashboard tutorial only once when user first accesses the tabs
   // and only if the tutorial hasn't been completed
   useEffect(() => {
-    // Prevent multiple calls
-    if (tutorialStartedRef.current) return;
+    console.log('[Tabs] Tutorial effect triggered, tutorialStartedRef.current:', tutorialStartedRef.current);
     
     const timer = setTimeout(async () => {
       try {
-        // Get the tutorial service instance to ensure it's initialized
-        const service = tutorialService.getInstance();
-        
-        // Wait a bit for AsyncStorage to load completed tutorials
-        // The service loads tutorials in its constructor, so we wait for that
-        await new Promise(resolve => setTimeout(resolve, 800));
+        console.log('[Tabs] ========== Starting tutorial check process ==========');
+        // Wait for tutorial service to finish loading completed tutorials from storage
+        console.log('[Tabs] Step 1: Waiting for tutorial service to load from storage...');
+        await tutorialService.waitForLoad();
+        console.log('[Tabs] Step 2: Tutorial service load complete');
         
         // Check if tutorial is already completed before starting
+        console.log('[Tabs] Step 3: Checking if dashboard_tutorial is completed...');
         const isCompleted = tutorialService.isTutorialCompleted('dashboard_tutorial');
+        console.log('[Tabs] Step 4: Dashboard tutorial completed status:', isCompleted);
+        console.log('[Tabs] Step 5: tutorialStartedRef.current:', tutorialStartedRef.current);
         
-        if (!isCompleted && !tutorialStartedRef.current) {
-          tutorialStartedRef.current = true;
-          startTutorial('dashboard');
+        // Only prevent starting if already started in THIS session AND tutorial is not completed
+        // If tutorial is completed, we should never start it regardless of ref
+        if (isCompleted) {
+          console.log('[Tabs] ❌ Dashboard tutorial already completed in storage, skipping');
+          return;
         }
+        
+        // If not completed, check if we've already started it in this session
+        if (tutorialStartedRef.current) {
+          console.log('[Tabs] ❌ Tutorial already started in this session, skipping');
+          return;
+        }
+        
+        // Start the tutorial
+        tutorialStartedRef.current = true;
+        console.log('[Tabs] ✅ Starting dashboard tutorial (not completed and not started in session)');
+        startTutorial('dashboard');
+        console.log('[Tabs] ========== Tutorial check process complete ==========');
       } catch (error) {
-        console.error('Error checking tutorial status:', error);
+        console.error('[Tabs] ❌ Error checking tutorial status:', error);
         // If there's an error, don't start the tutorial
       }
-    }, 1500); // Small delay to ensure UI is ready and AsyncStorage has loaded
+    }, 500); // Small delay to ensure UI is ready
 
-    return () => clearTimeout(timer);
+    return () => {
+      console.log('[Tabs] Tutorial effect cleanup');
+      clearTimeout(timer);
+    };
   }, [startTutorial]);
 
   return (

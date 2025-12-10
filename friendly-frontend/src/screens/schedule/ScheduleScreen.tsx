@@ -16,9 +16,9 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 
 // Import new components
-import DragDropCalendar from '@/src/components/schedule/DragDropCalendar';
-import ScheduleListView from '@/src/components/schedule/ScheduleListView';
-import ScheduleSkeleton from '@/src/components/schedule/ScheduleSkeleton';
+import DragDropCalendar from '@/src/components/modules/schedule/DragDropCalendar';
+import ScheduleListView from '@/src/components/modules/schedule/ScheduleListView';
+import ScheduleSkeleton from '@/src/components/modules/schedule/ScheduleSkeleton';
 // Removed bottom-sheet upload modal to keep single flow via popover
 
 // Import services

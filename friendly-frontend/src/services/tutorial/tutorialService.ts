@@ -1,5 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { getStorageAdapter } from '@/src/lib/storage';
+import { isWeb } from '@/src/lib/platform';
 
 export interface TutorialStep {
   id: string;
@@ -19,12 +19,12 @@ export interface TutorialConfig {
   autoStart?: boolean;
 }
 
-// Helper to check if AsyncStorage is available (window exists for web)
-const isAsyncStorageAvailable = (): boolean => {
-  if (Platform.OS === 'web') {
+// Helper to check if storage is available
+const isStorageAvailable = (): boolean => {
+  if (isWeb()) {
     return typeof window !== 'undefined';
   }
-  return true; // Native platforms always have AsyncStorage
+  return true; // Native platforms should have storage adapter set
 };
 
 class TutorialService {
@@ -33,9 +33,13 @@ class TutorialService {
   private isLoading: boolean = false;
 
   private constructor() {
-    // Only load if AsyncStorage is available
-    if (isAsyncStorageAvailable()) {
+    console.log('[TutorialService] Constructor called, initializing...');
+    // Only load if storage is available
+    if (isStorageAvailable()) {
+      console.log('[TutorialService] Storage available, loading completed tutorials');
       this.loadCompletedTutorials();
+    } else {
+      console.log('[TutorialService] Storage not available in constructor');
     }
   }
 
@@ -47,62 +51,124 @@ class TutorialService {
   }
 
   private async loadCompletedTutorials(): Promise<void> {
-    // Double-check availability before accessing AsyncStorage
-    if (!isAsyncStorageAvailable()) {
+    console.log('[TutorialService] 📥 loadCompletedTutorials called');
+    // Double-check availability before accessing storage
+    if (!isStorageAvailable()) {
+      console.log('[TutorialService] ❌ Storage not available, skipping load');
       return;
     }
 
     if (this.isLoading) {
+      console.log('[TutorialService] ⏳ Already loading, skipping duplicate call');
       return;
     }
 
     this.isLoading = true;
+    console.log('[TutorialService] 🔍 Starting to load completed tutorials from storage');
     try {
-      const stored = await AsyncStorage.getItem(TUTORIAL_STORAGE_KEY);
+      const storage = getStorageAdapter();
+      console.log('[TutorialService] 📦 Storage adapter obtained:', typeof storage);
+      console.log('[TutorialService] 🔑 Looking for key:', TUTORIAL_STORAGE_KEY);
+      const stored = await storage.getItem(TUTORIAL_STORAGE_KEY);
+      console.log('[TutorialService] 📄 Raw storage value:', stored);
+      console.log('[TutorialService] 📄 Storage value type:', typeof stored);
+      console.log('[TutorialService] 📄 Storage value length:', stored?.length);
+      
       if (stored) {
-        const completed = JSON.parse(stored);
-        this.completedTutorials = new Set(completed);
+        try {
+          const completed = JSON.parse(stored);
+          console.log('[TutorialService] ✅ Parsed completed tutorials:', completed);
+          this.completedTutorials = new Set(completed);
+          console.log('[TutorialService] ✅ Loaded completed tutorials into Set:', Array.from(this.completedTutorials));
+        } catch (parseError) {
+          console.error('[TutorialService] ❌ Failed to parse stored value:', parseError);
+          console.error('[TutorialService] Raw value that failed:', stored);
+        }
+      } else {
+        console.log('[TutorialService] ℹ️ No stored tutorials found, starting with empty set');
       }
     } catch (error) {
-      // Silently fail if AsyncStorage is not available (e.g., during SSR)
+      // Silently fail if storage is not available (e.g., during SSR)
       if (error instanceof Error && error.message.includes('window is not defined')) {
-        console.warn('AsyncStorage not available (SSR), skipping tutorial load');
+        console.warn('[TutorialService] ⚠️ Storage not available (SSR), skipping tutorial load');
       } else {
-        console.error('Failed to load completed tutorials:', error);
+        console.error('[TutorialService] ❌ Failed to load completed tutorials:', error);
+        console.error('[TutorialService] Error stack:', error instanceof Error ? error.stack : 'No stack');
       }
     } finally {
       this.isLoading = false;
+      console.log('[TutorialService] ✅ Finished loading completed tutorials. Final set:', Array.from(this.completedTutorials));
     }
   }
 
   async markTutorialCompleted(tutorialId: string): Promise<void> {
-    if (!isAsyncStorageAvailable()) {
+    console.log('[TutorialService] markTutorialCompleted called for:', tutorialId);
+    if (!isStorageAvailable()) {
+      console.log('[TutorialService] Storage not available, cannot mark as completed');
       return;
     }
 
     try {
       this.completedTutorials.add(tutorialId);
-      await AsyncStorage.setItem(
+      const storage = getStorageAdapter();
+      const completedArray = Array.from(this.completedTutorials);
+      console.log('[TutorialService] Saving completed tutorials to storage:', completedArray);
+      console.log('[TutorialService] Storage key:', TUTORIAL_STORAGE_KEY);
+      console.log('[TutorialService] Storage value to save:', JSON.stringify(completedArray));
+      await storage.setItem(
         TUTORIAL_STORAGE_KEY,
-        JSON.stringify(Array.from(this.completedTutorials))
+        JSON.stringify(completedArray)
       );
+      
+      // Verify it was saved
+      const verify = await storage.getItem(TUTORIAL_STORAGE_KEY);
+      console.log('[TutorialService] Verification - read back from storage:', verify);
+      
+      console.log('[TutorialService] ✅ Successfully marked tutorial as completed:', tutorialId);
+      console.log('[TutorialService] Current completed tutorials:', Array.from(this.completedTutorials));
     } catch (error) {
-      console.error('Failed to mark tutorial as completed:', error);
+      console.error('[TutorialService] ❌ Failed to mark tutorial as completed:', error);
+      throw error;
     }
   }
 
   isTutorialCompleted(tutorialId: string): boolean {
-    return this.completedTutorials.has(tutorialId);
+    const isCompleted = this.completedTutorials.has(tutorialId);
+    console.log(`[TutorialService] isTutorialCompleted(${tutorialId}):`, isCompleted, '| Current set:', Array.from(this.completedTutorials));
+    return isCompleted;
+  }
+
+  async waitForLoad(): Promise<void> {
+    console.log('[TutorialService] waitForLoad called, isLoading:', this.isLoading);
+    // Wait for loading to complete
+    let waitCount = 0;
+    while (this.isLoading) {
+      waitCount++;
+      console.log(`[TutorialService] Waiting for load to complete... (${waitCount})`);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      if (waitCount > 100) {
+        console.warn('[TutorialService] waitForLoad timeout after 5 seconds');
+        break;
+      }
+    }
+    console.log('[TutorialService] Load finished, completedTutorials size:', this.completedTutorials.size);
+    // If not loading but completedTutorials is empty, try loading once more
+    if (this.completedTutorials.size === 0 && isStorageAvailable()) {
+      console.log('[TutorialService] Set is empty, attempting to reload from storage');
+      await this.loadCompletedTutorials();
+    }
+    console.log('[TutorialService] waitForLoad complete, final set:', Array.from(this.completedTutorials));
   }
 
   async resetTutorial(tutorialId: string): Promise<void> {
-    if (!isAsyncStorageAvailable()) {
+    if (!isStorageAvailable()) {
       return;
     }
 
     try {
       this.completedTutorials.delete(tutorialId);
-      await AsyncStorage.setItem(
+      const storage = getStorageAdapter();
+      await storage.setItem(
         TUTORIAL_STORAGE_KEY,
         JSON.stringify(Array.from(this.completedTutorials))
       );
@@ -112,13 +178,14 @@ class TutorialService {
   }
 
   async resetAllTutorials(): Promise<void> {
-    if (!isAsyncStorageAvailable()) {
+    if (!isStorageAvailable()) {
       return;
     }
 
     try {
       this.completedTutorials.clear();
-      await AsyncStorage.removeItem(TUTORIAL_STORAGE_KEY);
+      const storage = getStorageAdapter();
+      await storage.removeItem(TUTORIAL_STORAGE_KEY);
     } catch (error) {
       console.error('Failed to reset all tutorials:', error);
     }
@@ -269,6 +336,9 @@ export default {
   },
   isTutorialCompleted: (tutorialId: string) => {
     return getInstance().isTutorialCompleted(tutorialId);
+  },
+  waitForLoad: () => {
+    return getInstance().waitForLoad();
   },
   resetTutorial: (tutorialId: string) => {
     return getInstance().resetTutorial(tutorialId);

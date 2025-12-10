@@ -1,5 +1,5 @@
-import { ENV } from '../../config/env';
-import { Platform } from 'react-native';
+import { ENV } from '@/src/config/env';
+import { isWeb } from '@/src/lib/platform';
 
 const API_BASE = ENV.API_BASE || 'http://localhost:4000';
 
@@ -151,7 +151,7 @@ export async function uploadProfilePicture(
   }
 
   // Handle web vs native platforms differently
-  if (Platform.OS === 'web') {
+  if (isWeb()) {
     // On web, we need to fetch the image and convert it to a Blob
     try {
       const response = await fetch(imageUri);
@@ -174,7 +174,7 @@ export async function uploadProfilePicture(
     formData.append('picture', fileData);
   }
 
-  console.log('Uploading profile picture:', { uid, filename, type, platform: Platform.OS });
+  console.log('Uploading profile picture:', { uid, filename, type, platform: isWeb() ? 'web' : 'native' });
 
   const response = await fetch(`${API_BASE}/api/users/${uid}/profile/picture`, {
     method: 'POST',

@@ -2,15 +2,17 @@
   "name": "friendly-backend",
   "version": "1.0.0",
   "description": "Backend server for Friendly app",
-  "main": "server.js",
+  "main": "src/index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:stop": "pm2 stop friendly-backend",
     "pm2:restart": "pm2 restart friendly-backend",
     "pm2:logs": "pm2 logs friendly-backend",
     "pm2:delete": "pm2 delete friendly-backend",
+    "backup": "node scripts/backupToDrive.js",
+    "restore": "node scripts/restoreFromDrive.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -18,16 +20,20 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "archiver": "^7.0.1",
     "axios": "^1.13.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "firebase-admin": "^13.5.0",
+    "fs-extra": "^11.3.2",
     "googleapis": "^164.1.0",
     "multer": "^2.0.2",
+    "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "openai": "^6.7.0",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^2.4.5",
+    "unzipper": "^0.12.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

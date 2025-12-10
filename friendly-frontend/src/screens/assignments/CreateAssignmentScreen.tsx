@@ -136,9 +136,6 @@ const { width: screenWidth } = Dimensions.get('window');
 
 interface CreateAssignmentScreenProps {
   classId?: string;
-  onBack: () => void;
-  onSuccess?: () => void;
-  router?: any;
 }
 
 const ASSIGNMENT_TYPES = [
@@ -153,11 +150,31 @@ const ASSIGNMENT_TYPES = [
 
 export default function CreateAssignmentScreen({
   classId,
-  onBack,
-  onSuccess,
 }: CreateAssignmentScreenProps) {
   const router = useRouter();
   const { user } = useApp();
+  
+  const handleBack = () => {
+    // Try to go back first, if that fails use explicit navigation
+    try {
+      if (classId) {
+        // Navigate back to the class detail screen
+        router.push({
+          pathname: '/class/[id]',
+          params: { 
+            id: classId,
+          },
+        });
+      } else {
+        // Navigate to classes list if no classId
+        router.push('/(tabs)/explore');
+      }
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback to tabs if navigation fails
+      router.push('/(tabs)/explore');
+    }
+  };
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<'ppt' | 'report' | 'team-meeting' | 'exam' | 'homework' | 'project' | 'other'>('other');
@@ -183,7 +200,7 @@ export default function CreateAssignmentScreen({
   const webMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const webAudioChunksRef = useRef<Blob[]>([]);
   const webStreamRef = useRef<MediaStream | null>(null);
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     loadClasses();
@@ -203,8 +220,8 @@ export default function CreateAssignmentScreen({
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
-      // Use the onBack callback which handles navigation properly
-      onBack();
+      // Navigate back after successful creation
+      handleBack();
     });
   };
 
@@ -387,8 +404,11 @@ export default function CreateAssignmentScreen({
           webStreamRef.current = null;
         }
       } else {
-        const recording = await audioRecorder.stop();
-        audioUri = recording.uri;
+        await audioRecorder.stop();
+        // Wait a bit for the URI to be available
+        await new Promise(resolve => setTimeout(resolve, 300));
+        // Access URI from recorder after stopping
+        audioUri = (audioRecorder as any).uri || null;
       }
 
       if (audioUri) {
@@ -471,7 +491,7 @@ export default function CreateAssignmentScreen({
           duration: 300,
           useNativeDriver: true,
         }).start(() => {
-          onSuccess?.();
+          // Success handled by navigation
           handleClose();
         });
       }, 500);

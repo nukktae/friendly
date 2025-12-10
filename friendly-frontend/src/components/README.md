@@ -106,8 +106,8 @@ import { Input } from '@/src/components/ui/input';
 ### Feature-Specific Components
 Components tied to specific features:
 ```typescript
-import DragDropCalendar from '@/src/components/schedule/DragDropCalendar';
-import TutorialOverlay from '@/src/components/tutorial/TutorialOverlay';
+import DragDropCalendar from '@/src/components/modules/schedule/DragDropCalendar';
+import TutorialOverlay from '@/src/components/modules/tutorial/TutorialOverlay';
 ```
 
 ## Best Practices

@@ -1,23 +1,18 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as AuthSession from 'expo-auth-session';
-import { ENV } from '../../config/env';
+import { getStorageAdapter } from '@/src/lib/storage';
+import { isWeb } from '@/src/lib/platform';
+import { ENV } from '@/src/config/env';
 import { ScheduleItem } from '../schedule/scheduleAIService';
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
 
-// Conditionally import GoogleSignin only for mobile platforms
+// Platform-specific modules should be injected by UI layer
 let GoogleSignin: any = null;
-// Avoid requiring native Google Sign-In to prevent TurboModule errors on web
-const isNativePlatform = Platform.OS === 'ios' || Platform.OS === 'android';
-const isExpoGo = Constants?.appOwnership === 'expo';
-if (isNativePlatform && !isExpoGo) {
-  try {
-    const googleSigninModule = require('@react-native-google-signin/google-signin');
-    GoogleSignin = googleSigninModule?.GoogleSignin || null;
-  } catch (error) {
-    console.log('GoogleSignin not available in this build');
-    GoogleSignin = null;
-  }
+let AuthSession: any = null;
+
+export function setGoogleSignInModule(module: any): void {
+  GoogleSignin = module;
+}
+
+export function setAuthSession(module: any): void {
+  AuthSession = module;
 }
 
 export interface GoogleCalendarEvent {
@@ -96,7 +91,8 @@ export class GoogleCalendarService {
    */
   async storeTokens(tokens: StoredTokens): Promise<void> {
     try {
-      await AsyncStorage.setItem(this.TOKEN_STORAGE_KEY, JSON.stringify(tokens));
+      const storage = getStorageAdapter();
+      await storage.setItem(this.TOKEN_STORAGE_KEY, JSON.stringify(tokens));
     } catch (error) {
       console.error('Failed to store tokens:', error);
     }
@@ -107,7 +103,8 @@ export class GoogleCalendarService {
    */
   private async loadStoredTokens(): Promise<StoredTokens | null> {
     try {
-      const storedTokens = await AsyncStorage.getItem(this.TOKEN_STORAGE_KEY);
+      const storage = getStorageAdapter();
+      const storedTokens = await storage.getItem(this.TOKEN_STORAGE_KEY);
       if (storedTokens) {
         const tokens: StoredTokens = JSON.parse(storedTokens);
         return tokens;
@@ -123,7 +120,8 @@ export class GoogleCalendarService {
    */
   private async clearTokens(): Promise<void> {
     try {
-      await AsyncStorage.removeItem(this.TOKEN_STORAGE_KEY);
+      const storage = getStorageAdapter();
+      await storage.removeItem(this.TOKEN_STORAGE_KEY);
     } catch (error) {
       console.error('Failed to clear tokens:', error);
     }
@@ -142,7 +140,7 @@ export class GoogleCalendarService {
    */
   private async refreshAccessToken(refreshToken: string): Promise<StoredTokens | null> {
     try {
-      const clientId = Platform.OS === 'web' ? ENV.GOOGLE_WEB_CLIENT_ID : ENV.GOOGLE_CLIENT_ID;
+      const clientId = isWeb() ? ENV.GOOGLE_WEB_CLIENT_ID : ENV.GOOGLE_CLIENT_ID;
       
       const response = await fetch(this.GOOGLE_TOKEN_ENDPOINT, {
         method: 'POST',
@@ -182,7 +180,8 @@ export class GoogleCalendarService {
    */
   async isAuthenticated(): Promise<boolean> {
     try {
-      const storedTokens = await AsyncStorage.getItem(this.TOKEN_STORAGE_KEY);
+      const storage = getStorageAdapter();
+      const storedTokens = await storage.getItem(this.TOKEN_STORAGE_KEY);
       if (!storedTokens) return false;
 
       const tokens: StoredTokens = JSON.parse(storedTokens);
@@ -218,7 +217,7 @@ export class GoogleCalendarService {
       this.authInProgress = true;
       
       // Check platform for different handling
-      if (Platform.OS === 'web') {
+      if (isWeb()) {
         // For web, use direct redirect to avoid popup issues
         console.log('Web platform detected, using direct redirect');
         return await this.signInWithDirectRedirect();
@@ -232,7 +231,11 @@ export class GoogleCalendarService {
         });
       }
 
-      // Create auth request with proper redirect URI
+      // Create auth request with proper redirect URI (mobile only)
+      if (!AuthSession) {
+        throw new Error('AuthSession not initialized. Call setAuthSession() from UI layer.');
+      }
+
       const redirectUri = AuthSession.makeRedirectUri({
         scheme: 'exp',
         path: 'auth',
@@ -251,7 +254,7 @@ export class GoogleCalendarService {
 
       console.log('OAuth redirect URI:', redirectUri);
       console.log('OAuth client ID:', ENV.GOOGLE_CLIENT_ID);
-      console.log('Platform:', Platform.OS);
+      console.log('Platform:', isWeb() ? 'web' : 'native');
 
       // Start the auth session (mobile)
       const result = await request.promptAsync({
@@ -288,8 +291,8 @@ export class GoogleCalendarService {
     } catch (error) {
       console.error('Google Calendar sign-in failed:', error);
       
-      // Handle COOP-specific errors
-      if (error instanceof Error && error.message?.includes('Cross-Origin-Opener-Policy')) {
+      // Handle COOP-specific errors (web only)
+      if (isWeb() && error instanceof Error && error.message?.includes('Cross-Origin-Opener-Policy')) {
         console.log('COOP error detected, trying alternative authentication method...');
         return await this.signInWithAlternativeMethod();
       }
@@ -375,7 +378,7 @@ export class GoogleCalendarService {
   private async signInWithAlternativeMethod(): Promise<boolean> {
     try {
       // Check if we're on web platform
-      if (Platform.OS === 'web') {
+      if (isWeb()) {
         console.log('Web platform detected, skipping GoogleSignin fallback');
         return false;
       }
@@ -419,7 +422,7 @@ export class GoogleCalendarService {
   async signInWithFallback(): Promise<boolean> {
     try {
       // Check platform for different handling
-      if (Platform.OS === 'web') {
+      if (isWeb()) {
         // For web, use direct redirect method
         console.log('Web platform detected, using direct redirect method');
         return await this.signInWithDirectRedirect();
@@ -445,7 +448,7 @@ export class GoogleCalendarService {
    */
   private async exchangeCodeForTokens(code: string, redirectUri: string): Promise<StoredTokens | null> {
     try {
-      const clientId = Platform.OS === 'web' ? ENV.GOOGLE_WEB_CLIENT_ID : ENV.GOOGLE_CLIENT_ID;
+      const clientId = isWeb() ? ENV.GOOGLE_WEB_CLIENT_ID : ENV.GOOGLE_CLIENT_ID;
       
       console.log('Exchanging code for tokens:', {
         code: code.substring(0, 20) + '...',
@@ -495,7 +498,7 @@ export class GoogleCalendarService {
       await this.clearTokens();
       
       // Sign out from Google Sign-In (mobile only)
-      if (Platform.OS !== 'web' && GoogleSignin && typeof GoogleSignin.signOut === 'function') {
+      if (!isWeb() && GoogleSignin && typeof GoogleSignin.signOut === 'function') {
         try {
           await GoogleSignin.signOut();
         } catch (error) {
@@ -547,7 +550,8 @@ export class GoogleCalendarService {
         if (response.status === 401) {
           // Token expired, try to refresh
           console.log('Token expired, attempting refresh...');
-          const storedTokens = await AsyncStorage.getItem(this.TOKEN_STORAGE_KEY);
+          const storage = getStorageAdapter();
+          const storedTokens = await storage.getItem(this.TOKEN_STORAGE_KEY);
           if (storedTokens) {
             const parsedTokens: StoredTokens = JSON.parse(storedTokens);
             if (parsedTokens.refreshToken) {
@@ -576,7 +580,8 @@ export class GoogleCalendarService {
    */
   private async getValidTokens(): Promise<StoredTokens | null> {
     try {
-      const storedTokens = await AsyncStorage.getItem(this.TOKEN_STORAGE_KEY);
+      const storage = getStorageAdapter();
+      const storedTokens = await storage.getItem(this.TOKEN_STORAGE_KEY);
       if (!storedTokens) return null;
 
       const tokens: StoredTokens = JSON.parse(storedTokens);

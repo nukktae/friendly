@@ -148,8 +148,9 @@ export async function deleteCourse(
 // Local storage fallback functions
 async function getGPADataLocal(userId: string): Promise<GPAData | null> {
   try {
-    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-    const stored = await AsyncStorage.getItem(`@gpa_data_${userId}`);
+    const { getStorageAdapter } = await import('@/src/lib/storage');
+    const storage = getStorageAdapter();
+    const stored = await storage.getItem(`@gpa_data_${userId}`);
     if (stored) {
       const data = JSON.parse(stored);
       // Convert date strings back to Date objects
@@ -171,8 +172,9 @@ async function getGPADataLocal(userId: string): Promise<GPAData | null> {
 
 async function saveGPADataLocal(userId: string, data: GPAData): Promise<void> {
   try {
-    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-    await AsyncStorage.setItem(`@gpa_data_${userId}`, JSON.stringify(data));
+    const { getStorageAdapter } = await import('@/src/lib/storage');
+    const storage = getStorageAdapter();
+    await storage.setItem(`@gpa_data_${userId}`, JSON.stringify(data));
   } catch (error) {
     console.error('Failed to save GPA data to local storage:', error);
   }

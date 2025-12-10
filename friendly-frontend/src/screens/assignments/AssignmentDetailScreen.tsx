@@ -45,47 +45,42 @@ const STATUS_BADGE_STYLES: Record<string, { bg: string; text: string }> = {
 
 interface AssignmentDetailScreenProps {
   id: string;
-  title: string;
-  date: string;
-  time: string;
-  type: string;
-  description?: string;
-  status?: 'not_started' | 'in_progress' | 'completed';
-  classId?: string;
-  onBack: () => void;
-  error?: string;
+  classId: string;
 }
 
 export default function AssignmentDetailScreen({
   id,
-  title,
-  date,
-  time,
-  type,
-  description,
-  status = 'not_started',
   classId,
-  onBack,
-  error,
 }: AssignmentDetailScreenProps) {
   const router = useRouter();
   const { user } = useApp();
   const [assignment, setAssignment] = useState<ClassAssignment | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const statusBadgeAnim = useRef(new Animated.Value(1)).current;
   const toastAnim = useRef(new Animated.Value(0)).current;
 
-  const currentStatus = assignment?.status || status;
+  const handleBack = () => {
+    try {
+      if (router.canGoBack && router.canGoBack()) {
+        router.back();
+      } else {
+        router.push('/(tabs)/explore');
+      }
+    } catch (error) {
+      router.push('/(tabs)/explore');
+    }
+  };
+
+  const currentStatus = assignment?.status || 'not_started';
   const statusBadgeStyle = STATUS_BADGE_STYLES[currentStatus] || STATUS_BADGE_STYLES.not_started;
 
   useEffect(() => {
-    if (classId && user?.uid && !assignment) {
-      loadAssignment();
-    }
-  }, [classId, user?.uid]);
+    loadAssignment();
+  }, [id, classId, user?.uid]);
 
   useEffect(() => {
     if (showToast) {
@@ -111,13 +106,20 @@ export default function AssignmentDetailScreen({
   }, [showToast]);
 
   const loadAssignment = async () => {
-    if (!classId || !user?.uid) return;
+    if (!id || !classId || !user?.uid) {
+      setError('Missing required parameters');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
+      setError(null);
       const data = await getAssignmentById(id, classId, user.uid);
       setAssignment(data);
     } catch (err: any) {
       console.error('Error loading assignment:', err);
+      setError(err.message || 'Failed to load assignment');
     } finally {
       setIsLoading(false);
     }
@@ -194,7 +196,7 @@ export default function AssignmentDetailScreen({
   };
 
   const handleDelete = () => {
-    if (!classId || !user?.uid) return;
+    if (!classId || !user?.uid || !assignment) return;
 
     Alert.alert(
       'Delete Assignment',
@@ -206,8 +208,10 @@ export default function AssignmentDetailScreen({
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteAssignment(id, classId, user.uid);
-              onBack();
+              if (assignment) {
+                await deleteAssignment(assignment.id, classId, user.uid);
+                handleBack();
+              }
             } catch (err: any) {
               Alert.alert('Error', err.message || 'Failed to delete assignment');
             }
@@ -232,19 +236,41 @@ export default function AssignmentDetailScreen({
 
   const primaryAction = getPrimaryAction();
 
-  if (error) {
+  if (error || isLoading) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="dark-content" />
         <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={22} color="#1A1A1A" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Assignment</Text>
           <View style={styles.placeholder} />
         </View>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#426b1f" />
+          ) : (
+            <Text style={styles.errorText}>{error}</Text>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  if (!assignment) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color="#1A1A1A" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Assignment</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Assignment not found</Text>
         </View>
       </View>
     );
@@ -256,7 +282,7 @@ export default function AssignmentDetailScreen({
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color="#1A1A1A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Assignment</Text>
@@ -271,7 +297,7 @@ export default function AssignmentDetailScreen({
         {/* Hero Assignment Summary Card */}
         <View style={styles.heroCard}>
           <View style={styles.heroHeader}>
-            <Text style={styles.heroTitle}>{title}</Text>
+            <Text style={styles.heroTitle}>{assignment.title}</Text>
             <Animated.View style={{ transform: [{ scale: statusBadgeAnim }] }}>
               <View style={[styles.statusBadge, { backgroundColor: statusBadgeStyle.bg }]}>
                 <Text style={[styles.statusBadgeText, { color: statusBadgeStyle.text }]}>
@@ -284,19 +310,19 @@ export default function AssignmentDetailScreen({
           {/* Metadata */}
           <View style={styles.metadataContainer}>
             <View style={styles.metadataRow}>
-              <Ionicons name={ASSIGNMENT_TYPE_ICONS[type] || 'ellipse'} size={16} color="#6B7280" />
-              <Text style={styles.metadataText}>{ASSIGNMENT_TYPE_LABELS[type] || 'Other'}</Text>
+              <Ionicons name={(ASSIGNMENT_TYPE_ICONS[assignment.type || 'other'] || 'ellipse') as any} size={16} color="#6B7280" />
+              <Text style={styles.metadataText}>{ASSIGNMENT_TYPE_LABELS[assignment.type || 'other'] || 'Other'}</Text>
                 </View>
-            {date && (
+            {assignment.dueDate && (
               <View style={styles.metadataRow}>
                 <Ionicons name="calendar-outline" size={16} color="#6B7280" />
-                <Text style={styles.metadataText}>{formatDateOnly(date)}</Text>
+                <Text style={styles.metadataText}>{formatDateOnly(assignment.dueDate)}</Text>
                 </View>
             )}
-            {date && (
+            {assignment.dueDate && (
               <View style={styles.metadataRow}>
                 <Ionicons name="time-outline" size={16} color="#6B7280" />
-                <Text style={styles.metadataText}>{formatTime(date)}</Text>
+                <Text style={styles.metadataText}>{formatTime(assignment.dueDate)}</Text>
               </View>
             )}
           </View>
@@ -307,8 +333,8 @@ export default function AssignmentDetailScreen({
         {/* Description Section */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Description</Text>
-          {description ? (
-            <Text style={styles.descriptionText}>{description}</Text>
+          {assignment.description ? (
+            <Text style={styles.descriptionText}>{assignment.description}</Text>
           ) : (
             <View style={styles.emptyDescription}>
               <Text style={styles.emptyDescriptionText}>No description added.</Text>

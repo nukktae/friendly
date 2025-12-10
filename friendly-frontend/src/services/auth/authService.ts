@@ -11,51 +11,44 @@ import {
   signOut,
   getIdToken,
 } from "firebase/auth";
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
+import { getPlatform, isWeb } from '@/src/lib/platform';
 
 const API_BASE = ENV.API_BASE || 'http://localhost:4000';
 
-// Conditionally import GoogleSignin only for mobile platforms
+// Platform-specific imports should be handled by the UI layer
+// Services accept platform information as parameters when needed
 let GoogleSignin: any = null;
-// Avoid requiring native Google Sign-In in Expo Go to prevent TurboModule errors
-const isNativePlatform = Platform.OS === 'ios' || Platform.OS === 'android';
-const isExpoGo = Constants?.appOwnership === 'expo';
-if (isNativePlatform && !isExpoGo) {
-  try {
-    const googleSigninModule = require('@react-native-google-signin/google-signin');
-    GoogleSignin = googleSigninModule?.GoogleSignin || null;
-  } catch (error) {
-    console.log('GoogleSignin not available in this build');
-    GoogleSignin = null;
-  }
+let signInWithPopup: any = null;
+
+// These will be initialized by the UI layer if needed
+export function setGoogleSignInModule(module: any): void {
+  GoogleSignin = module;
 }
 
-// Import signInWithPopup only for web
-let signInWithPopup: any = null;
-if (Platform.OS === 'web') {
-    try {
-        const { signInWithPopup: webSignInWithPopup } = require('firebase/auth');
-        signInWithPopup = webSignInWithPopup;
-    } catch {
-        console.log('signInWithPopup not available');
-    }
+export function setSignInWithPopup(fn: any): void {
+  signInWithPopup = fn;
 }
 
 export class AuthService {
-  static isGoogleSignInAvailable(): boolean {
-    return Platform.OS === 'web' || (isNativePlatform && GoogleSignin && typeof GoogleSignin.signIn === 'function');
+  static isGoogleSignInAvailable(platform: 'web' | 'ios' | 'android' = 'web'): boolean {
+    return platform === 'web' || (GoogleSignin && typeof GoogleSignin.signIn === 'function');
   }
 
-  static configureGoogleSignIn(): void {
-    if (isNativePlatform && GoogleSignin && typeof GoogleSignin.configure === 'function') {
+  static configureGoogleSignIn(config?: {
+    webClientId?: string;
+    iosClientId?: string;
+    offlineAccess?: boolean;
+    hostedDomain?: string;
+    forceCodeForRefreshToken?: boolean;
+  }): void {
+    if (GoogleSignin && typeof GoogleSignin.configure === 'function') {
       try {
         GoogleSignin.configure({
-          webClientId: 'YOUR_WEB_CLIENT_ID', // This will be replaced with actual client ID
-          iosClientId: 'YOUR_IOS_CLIENT_ID', // This will be replaced with actual client ID
-          offlineAccess: true,
-          hostedDomain: '',
-          forceCodeForRefreshToken: true,
+          webClientId: config?.webClientId || 'YOUR_WEB_CLIENT_ID',
+          iosClientId: config?.iosClientId || 'YOUR_IOS_CLIENT_ID',
+          offlineAccess: config?.offlineAccess ?? true,
+          hostedDomain: config?.hostedDomain || '',
+          forceCodeForRefreshToken: config?.forceCodeForRefreshToken ?? true,
         });
       } catch (error) {
         console.log('Failed to configure GoogleSignin:', error);
@@ -193,17 +186,17 @@ export class AuthService {
     }
   }
 
-  static async signInWithGoogle(): Promise<void> {
+  static async signInWithGoogle(platform: 'web' | 'ios' | 'android' = 'web'): Promise<void> {
     try {
       let idToken: string | null = null;
       let userId: string | null = null;
       
-      if (Platform.OS === 'web' && signInWithPopup) {
+      if (platform === 'web' && signInWithPopup) {
         // Web implementation using Firebase popup
         const result = await signInWithPopup(auth, googleProvider);
         idToken = await getIdToken(result.user);
         userId = result.user.uid;
-      } else if ((Platform.OS === 'ios' || Platform.OS === 'android') && GoogleSignin && typeof GoogleSignin.signIn === 'function') {
+      } else if (platform !== 'web' && GoogleSignin && typeof GoogleSignin.signIn === 'function') {
         // Mobile implementation using Google Sign-In
         await GoogleSignin.hasPlayServices();
         const userInfo = await GoogleSignin.signIn();

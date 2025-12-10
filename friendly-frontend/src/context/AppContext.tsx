@@ -65,12 +65,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentTutorial, setCurrentTutorial] = useState<TutorialConfig | null>(null);
   const [currentTutorialStep, setCurrentTutorialStep] = useState(0);
 
-  // Function to load user profile explicitly
-  const loadUserProfile = async () => {
-    if (!user?.uid) return;
-    
+  // Helper function to load profile by uid
+  const loadProfileByUid = async (uid: string) => {
     try {
-      const profile = await FirestoreService.getUserProfile(user.uid);
+      const profile = await FirestoreService.getUserProfile(uid);
       if (profile) {
         setUserProfile(profile);
         setIsOnboardingComplete(profile.onboardingCompleted);
@@ -93,6 +91,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Function to load user profile explicitly
+  const loadUserProfile = async () => {
+    if (!user?.uid) return;
+    await loadProfileByUid(user.uid);
+  };
+
   // Listen to auth state changes
   useEffect(() => {
     // Configure Google Sign-In for mobile platforms
@@ -101,12 +105,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Check initial auth state synchronously to avoid race condition on refresh
     const currentUser = AuthService.getCurrentUser();
     if (currentUser) {
-      setIsAuthenticated(true);
-      setUser({
+      const userObj = {
         uid: currentUser.uid,
         email: currentUser.email || '',
         name: currentUser.displayName || undefined,
-      });
+      };
+      setIsAuthenticated(true);
+      setUser(userObj);
+      // Load profile immediately for initial auth check
+      loadProfileByUid(currentUser.uid);
     } else {
       setIsAuthenticated(false);
       setUser(null);
@@ -117,10 +124,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (user) {
         setIsAuthenticated(true);
         setUser(user);
-        // Don't load profile automatically - let components request it when needed
-        // This prevents loading on auth pages
-          setUserProfile(null);
-          setIsOnboardingComplete(false);
+        // Load profile immediately when auth state changes
+        // This ensures onboarding state is loaded before navigation decisions
+        await loadProfileByUid(user.uid);
       } else {
         setIsAuthenticated(false);
         setUser(null);
@@ -196,23 +202,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const skipTutorial = () => {
+  const skipTutorial = async () => {
+    console.log('[AppContext] skipTutorial called, currentTutorial:', currentTutorial?.id);
     if (currentTutorial) {
-      tutorialService.markTutorialCompleted(currentTutorial.id);
+      await tutorialService.markTutorialCompleted(currentTutorial.id);
+      // Verify it was saved
+      const isNowCompleted = tutorialService.isTutorialCompleted(currentTutorial.id);
+      console.log('[AppContext] Verification - tutorial is now completed:', isNowCompleted);
     }
     setShowTutorial(false);
     setCurrentTutorial(null);
     setCurrentTutorialStep(0);
+    console.log('[AppContext] Tutorial skipped and hidden');
   };
 
-  const completeTutorial = () => {
+  const completeTutorial = async () => {
+    console.log('[AppContext] completeTutorial called, currentTutorial:', currentTutorial?.id);
     if (currentTutorial) {
-      tutorialService.markTutorialCompleted(currentTutorial.id);
-      console.log(`[Tutorial] Completed: ${currentTutorial.id}`);
+      await tutorialService.markTutorialCompleted(currentTutorial.id);
+      // Verify it was saved
+      const isNowCompleted = tutorialService.isTutorialCompleted(currentTutorial.id);
+      console.log(`[AppContext] ✅ Marked tutorial as completed: ${currentTutorial.id}`);
+      console.log('[AppContext] Verification - tutorial is now completed:', isNowCompleted);
+      if (!isNowCompleted) {
+        console.error('[AppContext] ⚠️ WARNING: Tutorial completion was not saved properly!');
+      }
     }
     setShowTutorial(false);
     setCurrentTutorial(null);
     setCurrentTutorialStep(0);
+    console.log('[AppContext] Tutorial completed and hidden');
   };
 
   const resetTutorials = async () => {

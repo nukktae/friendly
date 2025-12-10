@@ -13,7 +13,7 @@ import {
 import { getGPAData } from '@/src/services/gpa/gpaStorageService';
 import { useApp } from '@/src/context/AppContext';
 import { saveGPAData } from '@/src/services/gpa/gpaStorageService';
-import { PricingModal } from '@/src/components/gpa/PricingModal';
+import { PricingModal } from '@/src/components/modules/gpa/PricingModal';
 
 interface RequirementsDetailScreenProps {
   onBack: () => void;

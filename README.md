@@ -1,6 +1,6 @@
 # Friendly
 
-학생 생산성 플랫폼으로, AI 기반 강의 녹음 및 전사, 스마트 일정 관리, PDF 분석, GPA 추적, 학교 인증 커뮤니티 기능을 제공하는 크로스 플랫폼 모바일 애플리케이션입니다.
+AI 기반 강의 녹음 및 전사, 스마트 일정 관리, PDF 분석, GPA 추적, 학교 인증 커뮤니티 기능을 제공하는 크로스 플랫폼 모바일 애플리케이션입니다.
 
 ## 목차
 
@@ -13,6 +13,7 @@
 - [데이터베이스 구조](#데이터베이스-구조)
 - [개발 가이드](#개발-가이드)
 - [배포](#배포)
+- [인프라 및 백업](#인프라-및-백업)
 
 ## 프로젝트 개요
 
@@ -192,13 +193,35 @@ npm install
 환경 변수 설정 (`.env` 파일 생성):
 
 ```env
+# Server Configuration
 PORT=4000
+HOST=0.0.0.0
+NODE_ENV=development
+
+# Firebase Configuration
 FIREBASE_API_KEY=your_firebase_api_key
 FIREBASE_PROJECT_ID=your_project_id
-FIREBASE_SERVICE_ACCOUNT_JSON=your_service_account_json
+FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+
+# Google Drive Backup Configuration
+GOOGLE_PROJECT_ID=your_project_id
+GOOGLE_CLIENT_EMAIL=your_service_account_email@project_id.iam.gserviceaccount.com
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+
+# Backup Settings
+ENABLE_DRIVE_BACKUP=true
+
+# Google OAuth (for user authentication)
+GOOGLE_CLIENT_ID=your_client_id
+GOOGLE_CLIENT_SECRET=your_client_secret
+GOOGLE_ACCESS_TOKEN=your_access_token
+GOOGLE_REFRESH_TOKEN=your_refresh_token
+
+# OpenAI API Key
 OPENAI_API_KEY=your_openai_api_key
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
+
+# Feature Flags
+ENABLE_LOCAL_UPLOADS=false
 ```
 
 #### 3. 프론트엔드 설정
@@ -285,8 +308,23 @@ friendly-backend/
 │   ├── audio/          # 오디오 녹음
 │   ├── pdfs/           # PDF 파일
 │   ├── profiles/       # 프로필 사진
-│   └── schedules/      # 일정 이미지
-├── server.js           # Express 서버 진입점
+│   ├── schedules/      # 일정 이미지
+│   ├── documents/      # 문서 파일
+│   └── gpa-requirements/ # GPA 요건 이미지
+├── backup/             # 백업 파일 디렉토리
+├── logs/                # PM2 로그 파일
+│   ├── pm2-error.log   # 에러 로그
+│   ├── pm2-out.log     # 출력 로그
+│   └── pm2-combined.log # 통합 로그
+├── scripts/             # 유틸리티 스크립트
+│   ├── backupToDrive.js    # Google Drive 백업
+│   └── restoreFromDrive.js # Google Drive 복원
+├── src/
+│   ├── index.js        # Express 서버 진입점
+│   ├── config/         # 설정 파일
+│   ├── middlewares/    # 미들웨어
+│   ├── jobs/           # 스케줄 작업
+│   └── utils/          # 유틸리티 함수
 └── ecosystem.config.js # PM2 설정
 ```
 
@@ -356,16 +394,29 @@ friendly-frontend/
 ### 강의 (`/api/lectures`)
 
 - `POST /api/lectures` - 강의 생성
-- `GET /api/lectures` - 강의 목록 조회 (필터 지원)
+- `GET /api/lectures` - 강의 목록 조회 (필터 지원: userId, status, limit, offset)
+- `GET /api/lectures/user/:userId` - 사용자 강의 목록 조회
 - `GET /api/lectures/:lectureId` - 강의 상세 조회
 - `PATCH /api/lectures/:lectureId` - 강의 수정
 - `DELETE /api/lectures/:lectureId` - 강의 삭제
-- `POST /api/lectures/:lectureId/transcribe` - 오디오 전사
-- `POST /api/lectures/:lectureId/transcribe-chunk` - 실시간 전사
+- `POST /api/lectures/:lectureId/start-transcribing` - 전사 시작
+- `POST /api/lectures/:lectureId/transcribe` - 오디오 전사 (전체)
+- `POST /api/lectures/:lectureId/transcribe-chunk` - 실시간 전사 (청크)
+- `GET /api/lectures/:lectureId/transcripts` - 전사 버전 목록 조회
+- `DELETE /api/lectures/:lectureId/transcript` - 전사 삭제
+- `GET /api/lectures/class/:lectureId/recordings` - 클래스 녹음 조회
+- `GET /api/lectures/transcription/:transcriptionId/transcript` - 특정 전사 조회
 - `POST /api/lectures/transcription/:transcriptionId/summary` - 요약 생성
+- `GET /api/lectures/transcription/:transcriptionId/summary` - 요약 조회
 - `POST /api/lectures/transcription/:transcriptionId/checklist` - 체크리스트 생성
+- `GET /api/lectures/transcription/:transcriptionId/checklist` - 체크리스트 조회
+- `PATCH /api/lectures/transcription/:transcriptionId/checklist` - 체크리스트 수정
+- `PATCH /api/lectures/transcription/:transcriptionId/checklist/:itemId/toggle` - 체크리스트 항목 토글
 - `POST /api/lectures/chat` - 전역 강의 챗봇
+- `POST /api/lectures/transcription/:transcriptionId/chat` - 특정 전사 챗봇
 - `GET /api/lectures/chat/history` - 채팅 히스토리 조회
+- `DELETE /api/lectures/chat/:chatId` - 채팅 메시지 삭제
+- `DELETE /api/lectures/chat/history/all` - 전체 채팅 히스토리 삭제
 
 ### 일정 (`/api/schedule`)
 
@@ -373,6 +424,8 @@ friendly-frontend/
 - `POST /api/schedule` - 일정 저장
 - `GET /api/schedule/:userId` - 사용자 일정 조회
 - `GET /api/schedule/schedule/:scheduleId` - 일정 상세 조회
+- `GET /api/schedule/id/:id` - ID로 일정 조회
+- `GET /api/schedule/list/all` - 전체 일정 목록 조회
 - `PATCH /api/schedule/schedule/:scheduleId` - 일정 수정
 - `DELETE /api/schedule/schedule/:scheduleId` - 일정 삭제
 - `POST /api/schedule/schedule/:scheduleId/confirm` - 일정 확인 및 강의 변환
@@ -406,13 +459,16 @@ friendly-frontend/
 - `POST /api/gpa/:userId/courses` - 과목 추가
 - `PATCH /api/gpa/:userId/courses/:courseId` - 과목 수정
 - `DELETE /api/gpa/:userId/courses/:courseId` - 과목 삭제
-- `POST /api/gpa/:userId/requirements/analyze` - 졸업 요건 분석
+- `POST /api/gpa/:userId/suggestions` - 수강 과목 추천
+- `POST /api/gpa/:userId/requirements/analyze` - 졸업 요건 분석 (다중 이미지 지원)
 
 ### 사용자 (`/api/users`)
 
+- `GET /api/users` - 전체 사용자 목록 조회 (관리자)
 - `POST /api/users/:uid/profile` - 프로필 생성/병합
 - `GET /api/users/:uid/profile` - 프로필 조회
 - `PATCH /api/users/:uid/profile` - 프로필 수정
+- `POST /api/users/:uid/profile/nickname` - 닉네임 업데이트
 - `POST /api/users/:uid/profile/picture` - 프로필 사진 업로드
 - `GET /api/users/:uid/profile/picture` - 프로필 사진 조회
 
@@ -424,8 +480,39 @@ friendly-frontend/
 - `DELETE /api/calendar/events/:eventId` - 이벤트 삭제
 - `GET /api/calendar/calendars` - 캘린더 목록 조회
 - `POST /api/calendar/sync-to-schedule` - 일정으로 동기화
+- `POST /api/calendar/disconnect` - Google Calendar 연결 해제
 
-전체 API 엔드포인트는 80개 이상입니다.
+### 클래스 (`/api/classes`)
+
+- `POST /api/classes/:classId/files` - 클래스에 파일 업로드
+- `GET /api/classes/:classId/files` - 클래스 파일 목록 조회
+- `GET /api/classes/:classId/recordings` - 클래스 녹음 목록 조회
+- `GET /api/classes/assignments` - 전체 과제 목록 조회
+- `GET /api/classes/:classId/assignments` - 클래스 과제 목록 조회
+- `POST /api/classes/:classId/assignments` - 과제 생성
+- `GET /api/classes/:classId/assignments/:assignmentId` - 과제 상세 조회
+- `PATCH /api/classes/:classId/assignments/:assignmentId` - 과제 수정
+- `DELETE /api/classes/:classId/assignments/:assignmentId` - 과제 삭제
+- `GET /api/classes/:classId/notes` - 클래스 노트 조회
+- `GET /api/classes/:classId/exams` - 클래스 시험 목록 조회
+- `GET /api/classes/:classId/exams/:examId` - 시험 상세 조회
+- `POST /api/classes/:classId/exams` - 시험 생성
+- `PATCH /api/classes/:classId/exams/:examId` - 시험 수정
+- `DELETE /api/classes/:classId/exams/:examId` - 시험 삭제
+
+### 문서 (`/api/documents`)
+
+- `POST /api/documents` - PDF 문서 업로드 (최대 8개 파일, multipart/form-data)
+
+### 전사 (`/api/transcribe`)
+
+- `POST /api/transcribe` - 일반 오디오 전사 (multipart/form-data, language 파라미터 지원)
+
+### 채팅 (`/chat`)
+
+- `POST /chat` - 일반 AI 챗봇 (루트 레벨 엔드포인트)
+
+전체 API 엔드포인트는 100개 이상입니다.
 
 ## 데이터베이스 구조
 
@@ -462,6 +549,9 @@ friendly-frontend/
 **chatHistory**
 - 채팅 대화 히스토리
 - 필드: `chatId`, `userId`, `question`, `answer`, `lecturesReferenced[]`, `timestamp`
+
+**gpa-requirements**
+- GPA 졸업 요건 분석 데이터 (임시 저장)
 
 ## 개발 가이드
 
@@ -529,10 +619,95 @@ expo build:web        # 웹 빌드
 프로덕션 환경에서는 다음을 확인하세요:
 
 - Firebase 프로젝트 설정
-- 환경 변수 설정
+- 환경 변수 설정 (모든 필수 변수 포함)
 - API 키 보안 관리
 - CORS 설정
 - 파일 업로드 크기 제한
+- Google Drive 백업 설정 (선택사항)
+- PM2 프로세스 관리 설정
+
+## 인프라 및 백업
+
+### PM2 프로세스 관리
+
+프로덕션 환경에서 PM2를 사용하여 Node.js 프로세스를 관리합니다.
+
+**주요 설정:**
+- 메모리 제한: 500MB (초과 시 자동 재시작)
+- 자동 재시작: 활성화 (최대 10회)
+- 로그 관리: 자동 로테이션 (`logs/` 디렉토리)
+- 환경 변수: 개발/프로덕션 분리
+
+**PM2 명령어:**
+```bash
+npm run pm2:start    # 프로세스 시작
+npm run pm2:stop     # 프로세스 중지
+npm run pm2:restart  # 프로세스 재시작
+npm run pm2:logs     # 로그 확인
+npm run pm2:delete   # 프로세스 삭제
+```
+
+### 자동 백업 시스템
+
+Google Drive를 사용한 자동 백업 시스템이 구현되어 있습니다.
+
+**백업 설정:**
+- 스케줄: 매일 오전 3시 자동 실행 (node-cron)
+- 대상: `uploads/` 디렉토리
+- 형식: ZIP 압축 (최대 압축률)
+- 보관: 최신 7개 백업 유지
+- 위치: Google Drive `friendly_upload_backups` 폴더
+
+**백업 활성화:**
+`.env` 파일에서 `ENABLE_DRIVE_BACKUP=true`로 설정 (기본값: true)
+
+**수동 백업:**
+```bash
+cd friendly-backend
+npm run backup
+```
+
+**백업 복원:**
+```bash
+cd friendly-backend
+npm run restore
+```
+
+**필수 환경 변수:**
+- `GOOGLE_PROJECT_ID` - Google Cloud 프로젝트 ID
+- `GOOGLE_CLIENT_EMAIL` - 서비스 계정 이메일
+- `GOOGLE_PRIVATE_KEY` - 서비스 계정 개인 키
+
+### 로그 관리
+
+PM2가 자동으로 로그를 관리합니다:
+
+- **에러 로그**: `logs/pm2-error.log`
+- **출력 로그**: `logs/pm2-out.log`
+- **통합 로그**: `logs/pm2-combined.log`
+- **타임스탬프**: 모든 로그에 타임스탬프 포함
+- **자동 로테이션**: PM2가 자동으로 로그 파일 관리
+
+### 스케줄 작업
+
+node-cron을 사용하여 정기 작업을 실행합니다:
+
+- **백업 작업**: 매일 오전 3시 (`jobs/backupJob.js`)
+- **작업 비활성화**: `ENABLE_DRIVE_BACKUP=false` 설정
+
+### 인프라 요구사항
+
+**서버 요구사항:**
+- Node.js 18 이상
+- 최소 1GB RAM (권장 2GB)
+- 최소 10GB 디스크 공간 (업로드 파일용)
+- 네트워크: 인터넷 연결 (Firebase, OpenAI API 접근)
+
+**외부 서비스:**
+- Firebase (Firestore, Storage, Authentication)
+- OpenAI API (GPT-4o-mini, GPT-3.5-turbo, Whisper)
+- Google Drive API (백업용, 선택사항)
+- Google Calendar API (캘린더 연동용, 선택사항)
 
 ## 프로젝트 통계
 
@@ -540,15 +715,16 @@ expo build:web        # 웹 빌드
 - 백엔드 서비스: 12개 파일
 - 프론트엔드 화면: 17개 이상
 - 프론트엔드 컴포넌트: 50개 이상
-- API 엔드포인트: 80개 이상
-- 데이터베이스 컬렉션: 7개 이상
-- AI 모델 사용: 3개 (GPT-4o-mini, GPT-3.5-turbo, Whisper-1)
+- API 엔드포인트: 100개 이상
+- 데이터베이스 컬렉션: 8개 이상
+- AI 모델 사용: 4개 (GPT-4o-mini, GPT-3.5-turbo, Whisper-1, GPT-4o Vision)
 - 지원 플랫폼: iOS, Android, Web
+- 자동 백업: Google Drive 통합
+- 프로세스 관리: PM2
 
 ## 라이선스
 
 2025년 국민대학교 모바일프로그래밍 팀5 
-
 
 ## 기여
 
@@ -556,5 +732,5 @@ expo build:web        # 웹 빌드
 
 ## 문의
 
-프로젝트에 대한 질문이나 제안사항이 있으시면 이슈를 통해 알려주세요.
+프로젝트에 대한 질문이나 제안사항이 있으시면 이슈를 통하거나 [LinkedIn](https://www.linkedin.com/in/anu-bilegdemberel-445366318/)으로 연락주세요.
 

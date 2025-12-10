@@ -5,7 +5,7 @@ import 'react-native-reanimated';
 import '../global.css';
 import '../src/polyfills';
 
-import TutorialOverlay from '@/src/components/tutorial/TutorialOverlay';
+import TutorialOverlay from '@/src/components/modules/tutorial/TutorialOverlay';
 import { AppProvider, useApp } from '@/src/context/AppContext';
 import { LanguageProvider } from '@/src/context/LanguageContext';
 import { useColorScheme } from '@/src/hooks/use-color-scheme';
@@ -36,8 +36,8 @@ function AppWithOverlay() {
         <Stack.Screen name="requirements-detail" options={{ headerShown: false }} />
         
         <Stack.Screen name="auth" options={{ headerShown: false }} />
-        <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="signup" options={{ headerShown: false }} />
+        <Stack.Screen name="auth/login" options={{ headerShown: false }} />
+        <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       </Stack>
       

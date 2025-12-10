@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getStorageAdapter } from '@/src/lib/storage';
 import { Timestamp } from 'firebase/firestore';
 import { CalendarSyncSettings } from '../calendar/googleCalendarService';
 import { ScheduleItem } from './scheduleAIService';
@@ -219,8 +219,9 @@ export class ScheduleStorageService {
    */
   private async cacheSchedule(schedule: UserSchedule): Promise<void> {
     try {
+      const storage = getStorageAdapter();
       const cacheKey = `${this.CACHE_KEY_PREFIX}${schedule.id}`;
-      await AsyncStorage.setItem(cacheKey, JSON.stringify(schedule));
+      await storage.setItem(cacheKey, JSON.stringify(schedule));
     } catch (error) {
       console.error('Error caching schedule:', error);
     }
@@ -231,8 +232,9 @@ export class ScheduleStorageService {
    */
   private async getCachedSchedule(scheduleId: string): Promise<UserSchedule | null> {
     try {
+      const storage = getStorageAdapter();
       const cacheKey = `${this.CACHE_KEY_PREFIX}${scheduleId}`;
-      const cachedData = await AsyncStorage.getItem(cacheKey);
+      const cachedData = await storage.getItem(cacheKey);
       return cachedData ? JSON.parse(cachedData) : null;
     } catch (error) {
       console.error('Error getting cached schedule:', error);
@@ -245,9 +247,10 @@ export class ScheduleStorageService {
    */
   private async cacheUserSchedules(userId: string, schedules: UserSchedule[]): Promise<void> {
     try {
+      const storage = getStorageAdapter();
       const cacheKey = `${this.CACHE_KEY_PREFIX}user_${userId}`;
-      await AsyncStorage.setItem(cacheKey, JSON.stringify(schedules));
-      await AsyncStorage.setItem(this.CACHE_EXPIRATION_KEY, Date.now().toString());
+      await storage.setItem(cacheKey, JSON.stringify(schedules));
+      await storage.setItem(this.CACHE_EXPIRATION_KEY, Date.now().toString());
     } catch (error) {
       console.error('Error caching user schedules:', error);
     }
@@ -258,8 +261,9 @@ export class ScheduleStorageService {
    */
   private async getCachedUserSchedules(userId: string): Promise<UserSchedule[]> {
     try {
+      const storage = getStorageAdapter();
       const cacheKey = `${this.CACHE_KEY_PREFIX}user_${userId}`;
-      const cachedData = await AsyncStorage.getItem(cacheKey);
+      const cachedData = await storage.getItem(cacheKey);
       return cachedData ? JSON.parse(cachedData) : [];
     } catch (error) {
       console.error('Error getting cached user schedules:', error);
@@ -272,8 +276,9 @@ export class ScheduleStorageService {
    */
   private async removeCachedSchedule(scheduleId: string): Promise<void> {
     try {
+      const storage = getStorageAdapter();
       const cacheKey = `${this.CACHE_KEY_PREFIX}${scheduleId}`;
-      await AsyncStorage.removeItem(cacheKey);
+      await storage.removeItem(cacheKey);
     } catch (error) {
       console.error('Error removing cached schedule:', error);
     }
@@ -284,7 +289,8 @@ export class ScheduleStorageService {
    */
   private async isCacheValid(): Promise<boolean> {
     try {
-      const expirationTime = await AsyncStorage.getItem(this.CACHE_EXPIRATION_KEY);
+      const storage = getStorageAdapter();
+      const expirationTime = await storage.getItem(this.CACHE_EXPIRATION_KEY);
       if (!expirationTime) return false;
 
       const expirationMs = parseInt(expirationTime) + (this.options.cacheExpirationHours * 60 * 60 * 1000);
@@ -299,9 +305,10 @@ export class ScheduleStorageService {
    */
   async clearCache(): Promise<void> {
     try {
-      const keys = await AsyncStorage.getAllKeys();
+      const storage = getStorageAdapter();
+      const keys = await storage.getAllKeys();
       const scheduleKeys = keys.filter(key => key.startsWith(this.CACHE_KEY_PREFIX));
-      await AsyncStorage.multiRemove(scheduleKeys);
+      await storage.multiRemove(scheduleKeys);
     } catch (error) {
       console.error('Error clearing cache:', error);
     }

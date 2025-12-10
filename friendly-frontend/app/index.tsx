@@ -7,6 +7,7 @@ export default function Index() {
   const { isAuthenticated, isOnboardingComplete, loadUserProfile, user, authInitialized } = useApp();
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
 
   // Wait for component to mount before navigating
   useEffect(() => {
@@ -16,35 +17,46 @@ export default function Index() {
   // Load profile when authenticated and not on auth pages
   useEffect(() => {
     if (isAuthenticated && user?.uid && isMounted) {
+      setProfileLoading(true);
       // Add a small delay to ensure profile is created (especially after Google Sign-In)
-      const timer = setTimeout(() => {
-        loadUserProfile().then(() => {
-          // Retry loading profile after a delay if it's still not loaded
-          setTimeout(() => {
-            loadUserProfile();
-          }, 500);
-        });
+      const timer = setTimeout(async () => {
+        try {
+          await loadUserProfile();
+          // Wait a bit for state to update
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (error) {
+          console.error('Error loading profile:', error);
+        } finally {
+          setProfileLoading(false);
+        }
       }, 300);
       
       return () => clearTimeout(timer);
+    } else if (!isAuthenticated) {
+      setProfileLoading(false);
     }
   }, [isAuthenticated, user?.uid, loadUserProfile, isMounted]);
 
-  // Handle navigation after mount AND auth initialization
+  // Handle navigation after mount AND auth initialization AND profile loading
   useEffect(() => {
     if (!isMounted || !authInitialized) return;
+    
+    // If authenticated, wait for profile to be loaded (or confirmed as not existing)
+    if (isAuthenticated && profileLoading) {
+      return; // Still loading profile
+    }
 
     // Small delay to ensure router is ready
     const timer = setTimeout(() => {
       try {
-  if (!isAuthenticated) {
-    console.log('Index: Redirecting to login');
-          router.replace('/login');
-  } else if (!isOnboardingComplete) {
-    console.log('Index: Redirecting to onboarding');
+        if (!isAuthenticated) {
+          console.log('Index: Redirecting to login');
+          router.replace('/auth/login' as any);
+        } else if (!isOnboardingComplete) {
+          console.log('Index: Redirecting to onboarding (onboardingComplete:', isOnboardingComplete, ')');
           router.replace('/onboarding');
-  } else {
-    console.log('Index: Redirecting to classes tab');
+        } else {
+          console.log('Index: Redirecting to classes tab');
           router.replace('/(tabs)/explore');
         }
       } catch (error) {
@@ -53,10 +65,10 @@ export default function Index() {
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [isAuthenticated, isOnboardingComplete, isMounted, authInitialized, router]);
+  }, [isAuthenticated, isOnboardingComplete, isMounted, authInitialized, router, profileLoading]);
 
   // Show loading while determining where to navigate
-  if (!isMounted || !authInitialized) {
+  if (!isMounted || !authInitialized || (isAuthenticated && profileLoading)) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color="#6B7C32" />

@@ -1,93 +1,15 @@
 import AssignmentDetailScreen from '@/src/screens/assignments/AssignmentDetailScreen';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
-import { useApp } from '@/src/context/AppContext';
-import { getAssignmentById } from '@/src/services/classes/classResourcesService';
-import { ClassAssignment } from '@/src/types';
+import { useLocalSearchParams } from 'expo-router';
+import React from 'react';
 
-export default function AssignmentDetailRoute() {
-  const router = useRouter();
+export default function Page() {
   const params = useLocalSearchParams();
-  const { user } = useApp();
-  const [assignment, setAssignment] = useState<ClassAssignment | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
   const { id, classId } = params;
 
-  useEffect(() => {
-    const loadAssignment = async () => {
-      if (!id || !classId || !user?.uid) {
-        setError('Missing required parameters');
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        const data = await getAssignmentById(id as string, classId as string, user.uid);
-        setAssignment(data);
-      } catch (err: any) {
-        console.error('Error loading assignment:', err);
-        setError(err.message || 'Failed to load assignment');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadAssignment();
-  }, [id, classId, user?.uid]);
-
-  const handleBack = () => {
-    try {
-      if (router.canGoBack && router.canGoBack()) {
-        router.back();
-      } else {
-        router.push('/(tabs)/explore');
-      }
-    } catch (error) {
-      router.push('/(tabs)/explore');
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
-        <ActivityIndicator size="large" color="#3E6A35" />
-      </View>
-    );
-  }
-
-  if (error || !assignment) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 20 }}>
-        <AssignmentDetailScreen
-          id={id as string}
-          title=""
-          date=""
-          time=""
-          type="other"
-          onBack={handleBack}
-          error={error || 'Assignment not found'}
-        />
-      </View>
-    );
-  }
-
   return (
-    <View style={{ flex: 1 }}>
-      <AssignmentDetailScreen
-        id={assignment.id}
-        title={assignment.title}
-        date={assignment.dueDate || ''}
-        time=""
-        type={assignment.type || 'other'}
-        description={assignment.description}
-        status={assignment.status}
-        classId={assignment.classId || (classId as string)}
-        onBack={handleBack}
-      />
-    </View>
+    <AssignmentDetailScreen
+      id={id as string}
+      classId={classId as string}
+    />
   );
 }

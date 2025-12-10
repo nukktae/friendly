@@ -9,7 +9,7 @@ import {
   ClassExamsSection,
   ClassFilesSection,
   ClassRecordingsSection,
-} from '@/src/components/classes';
+} from '@/src/components/modules/classes';
 import {
   fetchClassAssignments,
   fetchClassExams,
@@ -18,7 +18,7 @@ import {
   updateAssignment,
 } from '@/src/services/classes/classResourcesService';
 import { ClassAssignment, ClassExam, ClassFile, ClassRecording } from '@/src/types';
-import { PDFViewer } from '@/src/components/pdf/PDFViewer';
+import { PDFViewer } from '@/src/components/modules/pdf/PDFViewer';
 import { getPDF, uploadPDF } from '@/src/services/pdf/pdfService';
 import { PDFFile } from '@/src/services/pdf/pdfService';
 
@@ -30,8 +30,6 @@ interface ClassDetailScreenProps {
   location?: string;
   instructor?: string;
   color?: string;
-  onBack: () => void;
-  onRecordPress?: () => void;
 }
 
 type TabKey = 'files' | 'recordings' | 'assignments' | 'exams';
@@ -44,10 +42,29 @@ export default function ClassDetailScreen({
   location,
   instructor,
   color,
-  onBack,
-  onRecordPress,
 }: ClassDetailScreenProps) {
   const router = useRouter();
+  
+  const handleBack = () => {
+    // Try to go back, if that fails navigate to explore tab
+    try {
+      if (router.canGoBack && router.canGoBack()) {
+        router.back();
+      } else {
+        router.push('/(tabs)/explore');
+      }
+    } catch (error) {
+      // Fallback to explore tab if navigation fails
+      router.push('/(tabs)/explore');
+    }
+  };
+
+  const handleRecordPress = () => {
+    router.push({
+      pathname: '/record',
+      params: { lectureId: id }
+    });
+  };
   const { user } = useApp();
   const scrollY = useRef(new Animated.Value(0)).current;
   const isMountedRef = useRef(true);
@@ -241,7 +258,7 @@ export default function ClassDetailScreen({
     <View style={styles.container}>
       {/* Animated Header */}
       <Animated.View style={[styles.topHeader, { opacity: headerOpacity }]}>
-        <TouchableOpacity onPress={onBack} style={styles.topBackButton}>
+        <TouchableOpacity onPress={handleBack} style={styles.topBackButton}>
           <Ionicons name="arrow-back" size={24} color="#1f2937" />
         </TouchableOpacity>
         <Text style={styles.topHeaderTitle} numberOfLines={1}>{title}</Text>
@@ -259,7 +276,7 @@ export default function ClassDetailScreen({
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#0D1A0D" />
           </TouchableOpacity>
           
@@ -294,7 +311,7 @@ export default function ClassDetailScreen({
         <View style={styles.actionButtons}>
           <TouchableOpacity 
             style={styles.actionButtonRecord}
-            onPress={onRecordPress}
+            onPress={handleRecordPress}
             activeOpacity={0.7}
           >
             <Ionicons name="mic" size={18} color="#C33A3A" />
@@ -412,7 +429,7 @@ export default function ClassDetailScreen({
             <ClassRecordingsSection
               recordings={recordings}
               isLoading={isLoadingResources}
-              onRecordNew={onRecordPress}
+              onRecordNew={handleRecordPress}
             />
           )}
 

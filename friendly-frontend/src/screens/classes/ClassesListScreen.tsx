@@ -1,8 +1,8 @@
 import EmptyState from '@/src/components/common/EmptyState';
 import AIAssistantFAB from '@/src/components/common/AIAssistantFAB';
 import SegmentedControl from '@/src/components/common/SegmentedControl';
-import MonthCalendarView from '@/src/components/classes/MonthCalendarView';
-import InlineClassPreview from '@/src/components/classes/InlineClassPreview';
+import MonthCalendarView from '@/src/components/modules/classes/MonthCalendarView';
+import InlineClassPreview from '@/src/components/modules/classes/InlineClassPreview';
 import { useApp } from '@/src/context/AppContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -43,6 +43,8 @@ const ClassesPage: React.FC<ClassesPageProps> = ({
   const [monthFadeAnim] = useState(new Animated.Value(1));
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [viewModeAnim] = useState(new Animated.Value(0));
+  const [showEditMenu, setShowEditMenu] = useState(false);
+  const [editMenuAnimation] = useState(new Animated.Value(0));
 
   const storageService = scheduleStorageService;
   const calendarService = googleCalendarService;
@@ -457,13 +459,183 @@ const ClassesPage: React.FC<ClassesPageProps> = ({
     setViewMode(newMode);
   };
 
+  // Edit menu handlers
+  const showEditMenuHandler = () => {
+    setShowEditMenu(true);
+    Animated.spring(editMenuAnimation, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 50,
+      friction: 7,
+    }).start();
+  };
+
+  const hideEditMenu = () => {
+    Animated.timing(editMenuAnimation, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowEditMenu(false);
+    });
+  };
+
+  const handleCreateSchedule = () => {
+    hideEditMenu();
+    showPopoverMenu();
+  };
+
+  const handleEditSchedule = async () => {
+    hideEditMenu();
+    const userId = userProfile?.uid || user?.uid;
+    if (!userId) return;
+
+    const activeSchedule = schedules.find(s => s.isActive) || schedules[0];
+    if (!activeSchedule) {
+      Alert.alert('No Schedule', 'No schedule found to edit. Please create a schedule first.');
+      return;
+    }
+
+    try {
+      router.push({
+        pathname: '/schedule-review',
+        params: {
+          scheduleId: activeSchedule.id,
+          userId: userId,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to navigate to schedule review:', error);
+      Alert.alert('Error', 'Failed to open schedule editor.');
+    }
+  };
+
+  const handleDeleteSchedule = async () => {
+    hideEditMenu();
+    const userId = userProfile?.uid || user?.uid;
+    if (!userId) return;
+
+    const activeSchedule = schedules.find(s => s.isActive) || schedules[0];
+    if (!activeSchedule) {
+      Alert.alert('No Schedule', 'No schedule found to delete.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Schedule',
+      `Are you sure you want to delete "${activeSchedule.title}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await storageService.deleteSchedule(activeSchedule.id, userId);
+              // Reload schedules
+              const updatedSchedules = await storageService.getUserSchedules(userId);
+              setSchedules(updatedSchedules || []);
+              // Reload classes
+              const response = await getLectures({ userId });
+              const scheduleItems: ScheduleItem[] = response.lectures.map(lecture => 
+                lectureToScheduleItem(lecture)
+              );
+              setClasses(scheduleItems);
+              Alert.alert('Success', 'Schedule deleted successfully.');
+            } catch (error) {
+              console.error('Failed to delete schedule:', error);
+              Alert.alert('Error', 'Failed to delete schedule. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={[styles.container, isDark && styles.containerDark]}>
         {/* Header */}
         <View style={[styles.header, isDark && styles.headerDark]}>
           <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>Classes</Text>
+          <TouchableOpacity
+            onPress={showEditMenu ? hideEditMenu : showEditMenuHandler}
+            style={styles.editButton}
+            activeOpacity={0.7}
+          >
+            <Ionicons 
+              name="create-outline" 
+              size={24} 
+              color={isDark ? '#FFFFFF' : '#000000'} 
+            />
+          </TouchableOpacity>
         </View>
+
+        {/* Edit Menu Modal */}
+        {showEditMenu && (
+          <View style={styles.editMenuOverlay} onTouchEnd={hideEditMenu}>
+            <Animated.View
+              style={[
+                styles.editMenuContainer,
+                {
+                  opacity: editMenuAnimation,
+                  transform: [
+                    {
+                      scale: editMenuAnimation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.9, 1],
+                      }),
+                    },
+                    {
+                      translateY: editMenuAnimation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-10, 0],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={[styles.editMenu, isDark && styles.editMenuDark]}>
+                <TouchableOpacity
+                  style={[styles.editMenuItem, isDark && styles.editMenuItemDark]}
+                  onPress={handleCreateSchedule}
+                >
+                  <Ionicons name="add-circle-outline" size={22} color={isDark ? '#FFFFFF' : '#000000'} />
+                  <Text style={[styles.editMenuItemText, isDark && styles.editMenuItemTextDark]}>
+                    Create New Schedule
+                  </Text>
+                </TouchableOpacity>
+
+                {schedules.length > 0 && (
+                  <>
+                    <View style={[styles.editMenuSeparator, isDark && styles.editMenuSeparatorDark]} />
+                    <TouchableOpacity
+                      style={[styles.editMenuItem, isDark && styles.editMenuItemDark]}
+                      onPress={handleEditSchedule}
+                    >
+                      <Ionicons name="pencil-outline" size={22} color={isDark ? '#FFFFFF' : '#000000'} />
+                      <Text style={[styles.editMenuItemText, isDark && styles.editMenuItemTextDark]}>
+                        Edit Current Schedule
+                      </Text>
+                    </TouchableOpacity>
+
+                    <View style={[styles.editMenuSeparator, isDark && styles.editMenuSeparatorDark]} />
+                    <TouchableOpacity
+                      style={[styles.editMenuItem, styles.editMenuItemDanger, isDark && styles.editMenuItemDark]}
+                      onPress={handleDeleteSchedule}
+                    >
+                      <Ionicons name="trash-outline" size={22} color="#FF3B30" />
+                      <Text style={[styles.editMenuItemText, styles.editMenuItemTextDanger]}>
+                        Delete Schedule
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            </Animated.View>
+          </View>
+        )}
 
         {/* Segmented Control */}
         {!isLoading && (classes.length > 0 || schedules.length > 0) && (
@@ -700,6 +872,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#0C0C0C',
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 56,
     paddingBottom: 20,
@@ -716,9 +891,75 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
     letterSpacing: -0.5,
+    flex: 1,
   },
   headerTitleDark: {
     color: '#ECEDEE',
+  },
+  editButton: {
+    padding: 8,
+    marginLeft: 12,
+  },
+  editMenuOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 1000,
+  },
+  editMenuContainer: {
+    position: 'absolute',
+    top: 100,
+    right: 20,
+    zIndex: 1001,
+  },
+  editMenu: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 8,
+    minWidth: 200,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  editMenuDark: {
+    backgroundColor: '#1E1E1E',
+  },
+  editMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  editMenuItemDark: {
+    backgroundColor: 'transparent',
+  },
+  editMenuItemDanger: {
+    // Keep danger styling separate
+  },
+  editMenuItemText: {
+    fontSize: 16,
+    color: '#111827',
+    marginLeft: 12,
+    fontWeight: '500',
+  },
+  editMenuItemTextDark: {
+    color: '#ECEDEE',
+  },
+  editMenuItemTextDanger: {
+    color: '#FF3B30',
+  },
+  editMenuSeparator: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 4,
+  },
+  editMenuSeparatorDark: {
+    backgroundColor: '#2E2E2E',
   },
   segmentedControlContainer: {
     paddingHorizontal: 20,

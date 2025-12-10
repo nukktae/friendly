@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'friendly-backend',
-      script: './server.js',
+      script: './src/index.js',
       instances: 1,
       exec_mode: 'fork',
       env: {

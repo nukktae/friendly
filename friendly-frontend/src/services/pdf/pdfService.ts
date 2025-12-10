@@ -1,5 +1,5 @@
 import { ENV } from '@/src/config/env';
-import { Platform } from 'react-native';
+import { isWeb } from '@/src/lib/platform';
 
 const API_BASE = ENV.API_BASE;
 
@@ -71,7 +71,7 @@ export async function uploadPDF(
   const formData = new FormData();
 
   // Handle file differently for web vs native
-  if (Platform.OS === 'web') {
+  if (isWeb()) {
     try {
       const response = await fetch(fileUri);
       const blob = await response.blob();
@@ -393,7 +393,7 @@ export async function transcribeAudioForPDF(
   const formData = new FormData();
   
   // Handle web platform - audioUri might be a blob URL
-  if (Platform.OS === 'web' && (audioUri.startsWith('blob:') || audioUri.startsWith('http://') || audioUri.startsWith('https://'))) {
+  if (isWeb() && (audioUri.startsWith('blob:') || audioUri.startsWith('http://') || audioUri.startsWith('https://'))) {
     try {
       // Fetch the audio blob from the URI
       const response = await fetch(audioUri);

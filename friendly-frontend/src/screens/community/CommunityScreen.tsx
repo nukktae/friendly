@@ -14,15 +14,12 @@ import {
   verifySchoolEmail,
 } from '@/src/services/community/communityService';
 import { ENV } from '@/src/config/env';
-import { VerificationModal } from '@/src/components/community/VerificationModal';
-import { FilterBar } from '@/src/components/community/FilterBar';
-import { NewPostCard } from '@/src/components/community/NewPostCard';
-import { PostCard } from '@/src/components/community/PostCard';
+import { VerificationModal } from '@/src/components/modules/community/VerificationModal';
+import { FilterBar } from '@/src/components/modules/community/FilterBar';
+import { NewPostCard } from '@/src/components/modules/community/NewPostCard';
+import { PostCard } from '@/src/components/modules/community/PostCard';
 
-interface CommunityPageProps {
-  title: string;
-  onBack: () => void;
-}
+interface CommunityPageProps {}
 
 const CATEGORIES = [
   'All',
@@ -66,11 +63,11 @@ const getImageUrl = (imageUrl: string | null | undefined): string | null => {
   return `${baseUrl}${imageUrl}`;
 };
 
-const CommunityPage: React.FC<CommunityPageProps> = ({
-  title,
-  onBack,
-}) => {
+const CommunityPage: React.FC<CommunityPageProps> = () => {
   const { user, userProfile, loadUserProfile } = useApp();
+  const handleBack = () => {
+    router.push('/');
+  };
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
