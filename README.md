@@ -1,5 +1,7 @@
 # Friendly
 
+[GitHub Repository](https://github.com/nukktae/friendly)
+
 AI 기반 강의 녹음 및 전사, 스마트 일정 관리, PDF 분석, GPA 추적, 학교 인증 커뮤니티 기능을 제공하는 크로스 플랫폼 모바일 애플리케이션입니다.
 
 ## 목차
